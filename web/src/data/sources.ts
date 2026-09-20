@@ -34,27 +34,55 @@ export async function discoverSources(event: SportEvent, input: ProviderConfig, 
     issues: [...issues, ...results.flatMap((result) => result.issues)],
   }
 }
+type BrowserProbe = { response: Response; method: 'GET' | 'HEAD' }
+
+async function probeRequest(url: string, method: 'GET' | 'HEAD', headers?: Record<string, string>): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 4_000)
+  try {
+    return await fetch(url, {
+      method,
+      mode: 'cors',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers,
+    })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+async function probeBrowserSource(url: string, headers?: Record<string, string>): Promise<BrowserProbe> {
+  let lastError: unknown
+  for (const method of ['GET', 'HEAD'] as const) {
+    try {
+      const response = await probeRequest(url, method, headers)
+      if (method === 'GET' && response.body) {
+        try {
+          await response.body.cancel()
+        } catch {
+          // The response headers are sufficient for this lightweight probe.
+        }
+      }
+      if (method === 'GET' && (response.status === 405 || response.status === 501)) continue
+      return { response, method }
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Browser access probe failed.')
+}
 
 export async function checkBrowserSource(candidate: SourceCandidate): Promise<SourceCandidate> {
   if (candidate.requiresProviderResolution) return { ...candidate, browserStatus: 'unknown', browserStatusDetail: 'The portal must resolve this channel before the browser can test it.' }
   if (!/^https?:\/\//i.test(candidate.playbackTarget)) return { ...candidate, browserStatus: 'unsupported', browserStatusDetail: 'The source is not an HTTP media URL.' }
-  if (candidate.playbackTarget.startsWith('http://') && window.location.protocol === 'https:') {
-    return { ...candidate, browserStatus: 'blocked', browserStatusDetail: 'HTTP media is blocked inside this HTTPS app.' }
-  }
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 4_000)
+  if (candidate.playbackTarget.startsWith('http://') && window.location.protocol === 'https:') return { ...candidate, browserStatus: 'blocked', browserStatusDetail: 'HTTP media is blocked inside this HTTPS app.' }
   try {
-    const response = await fetch(candidate.playbackTarget, {
-      method: 'HEAD',
-      mode: 'cors',
-      signal: controller.signal,
-      headers: candidate.headers,
-    })
-    if (!response.ok) return { ...candidate, browserStatus: 'blocked', browserStatusDetail: `The source returned HTTP ${response.status}.` }
-    return { ...candidate, browserStatus: 'ready', browserStatusDetail: response.headers.get('content-type') ?? 'Browser access allowed.' }
+    const probe = await probeBrowserSource(candidate.playbackTarget, candidate.headers)
+    if (!probe.response.ok) return { ...candidate, browserStatus: 'blocked', browserStatusDetail: `The source returned HTTP ${probe.response.status}.` }
+    if (probe.method === 'HEAD') return { ...candidate, browserStatus: 'unknown', browserStatusDetail: 'The provider only answered a metadata probe. Try playback to verify media access.' }
+    return { ...candidate, browserStatus: 'ready', browserStatusDetail: probe.response.headers.get('content-type') ?? 'Browser media probe allowed.' }
   } catch (error) {
     return { ...candidate, browserStatus: 'blocked', browserStatusDetail: error instanceof Error ? 'The browser could not access this URL (often CORS or provider policy).' : 'Browser access failed.' }
-  } finally {
-    window.clearTimeout(timeout)
   }
 }

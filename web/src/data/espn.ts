@@ -1,5 +1,5 @@
 import { asArray, asRecord, stringValue } from '../domain'
-import type { JsonRecord, SportEvent, SportsSnapshot, Team, EventStatus } from '../domain'
+import type { HighlightClip, JsonRecord, SportEvent, SportsSnapshot, Team, EventStatus } from '../domain'
 
 
 export interface LeagueDescriptor {
@@ -166,6 +166,25 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
       .map(stringValue)
       .filter((name): name is string => Boolean(name))
     const currentDetail = stringValue(status.detail) ?? stringValue(status.shortDetail) ?? event.gameStatusDetail
+    const highlightClips = asArray(payload.videos).flatMap((value, index): HighlightClip[] => {
+      const video = asRecord(value)
+      const links = asRecord(video.links)
+      const source = asRecord(links.source)
+      const playbackUrl = stringValue(asRecord(source.HD).href)
+        ?? stringValue(asRecord(source.mezzanine).href)
+        ?? stringValue(asRecord(source.SD).href)
+        ?? stringValue(asRecord(links.mobile).href)
+      const title = stringValue(video.headline) ?? stringValue(video.title) ?? `Highlight ${index + 1}`
+      if (!playbackUrl) return []
+      return [{
+        id: stringValue(video.id) ?? `${event.id}:${index}`,
+        title,
+        description: stringValue(video.description),
+        playbackUrl,
+        thumbnailUrl: stringValue(asRecord(asArray(video.images)[0]).url),
+        duration: numberValue(video.duration),
+      }]
+    })
     return {
       ...event,
       scoreHome: numberValue(home?.score) ?? event.scoreHome,
@@ -173,6 +192,7 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
       broadcastStations: broadcasts.length ? broadcasts : event.broadcastStations,
       gameStatusDetail: currentDetail,
       liveStats: { ...event.liveStats, ...(currentDetail ? { 'Game Status': currentDetail } : {}) },
+      highlightClips,
     }
   } catch {
     return event

@@ -13,6 +13,14 @@ export interface Team {
   logoUrl?: string
   colors?: string[]
 }
+export interface HighlightClip {
+  id: string
+  title: string
+  description?: string
+  playbackUrl: string
+  thumbnailUrl?: string
+  duration?: number
+}
 
 export interface SportEvent {
   id: string
@@ -30,6 +38,7 @@ export interface SportEvent {
   gameStatusDetail?: string
   eventContextTitle?: string
   liveStats: Record<string, string>
+  highlightClips?: HighlightClip[]
 }
 
 export interface ChannelGuide {

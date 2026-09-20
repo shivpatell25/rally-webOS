@@ -9,6 +9,11 @@ keystore.properties
 
 # Build products
 **/build/
+web/node_modules/
+web/dist/
+web/.vite/
+web/coverage/
+web/.env*
 *.apk
 *.aab
 

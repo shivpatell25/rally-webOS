@@ -1,0 +1,15 @@
+{
+  "name": "Rally",
+  "short_name": "Rally",
+  "description": "Sports kept simple.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05080F",
+  "theme_color": "#05080F",
+  "icons": [{
+    "src": "/rally-mark.svg",
+    "sizes": "any",
+    "type": "image/svg+xml",
+    "purpose": "any maskable"
+  }]
+}

@@ -9,6 +9,7 @@ export interface PlaybackSurfaceHandle {
   play: () => Promise<void>
   pause: () => void
   seekLive: () => void
+  restart: () => void
 }
 
 interface PlaybackSurfaceProps {
@@ -51,6 +52,12 @@ export const PlaybackSurface = forwardRef<PlaybackSurfaceHandle, PlaybackSurface
     seekLive() {
       const video = videoRef.current
       if (video?.seekable.length) video.currentTime = video.seekable.end(video.seekable.length - 1) - 1
+    },
+    restart() {
+      const video = videoRef.current
+      if (!video) return
+      video.currentTime = 0
+      void video.play().catch(() => undefined)
     },
   }), [])
 

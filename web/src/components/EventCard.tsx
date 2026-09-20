@@ -11,6 +11,20 @@ interface EventCardProps {
   onToggleFavorite?: (teamId: string) => void
 }
 
+function timeLabel(event: SportEvent): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(event.startTime))
+  } catch {
+    return eventStatusLabel(event)
+  }
+}
+function dateLabel(event: SportEvent): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(event.startTime))
+  } catch {
+    return eventStatusLabel(event)
+  }
+}
 function TeamMark({ logoUrl, abbreviation }: { logoUrl?: string; abbreviation: string }) {
   if (logoUrl) return <img className="team-mark" src={logoUrl} alt="" loading="lazy" />
   return <span className="team-mark team-mark-fallback" aria-hidden="true">{abbreviation.slice(0, 3)}</span>
@@ -35,15 +49,15 @@ export const EventCard = memo(function EventCard({ event, onOpen, compact = fals
         {visible && compact && (
           <>
             <div className="event-card-topline">
-              <span className={isLive ? 'live-dot-label' : 'event-league'}>{isLive && <span className="live-dot" />}{isLive ? 'LIVE' : event.league}</span>
-              <span className="event-card-time">{eventStatusLabel(event)}</span>
+              <span className={isLive ? 'live-dot-label' : 'event-league'}>{isLive ? (<><span className="live-dot" />LIVE</>) : `UPCOMING · ${timeLabel(event)}`}</span>
+              <span className="event-card-time">{isLive ? (event.gameStatusDetail?.toUpperCase() ?? 'LIVE') : dateLabel(event).toUpperCase()}</span>
             </div>
             <div className="matchup">
               <div className="matchup-team"><TeamMark abbreviation={event.awayTeam?.abbreviation ?? 'AWY'} logoUrl={event.awayTeam?.logoUrl} /></div>
-              <div className="matchup-score"><strong>{event.scoreAway ?? '—'}</strong><i>–</i><strong>{event.scoreHome ?? '—'}</strong></div>
+              <div className="matchup-score">{isLive ? (<><strong>{event.scoreAway ?? '–'}</strong><i>–</i><strong>{event.scoreHome ?? '–'}</strong></>) : (<strong className="matchup-vs">VS</strong>)}</div>
               <div className="matchup-team match-team-home"><TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} /></div>
             </div>
-            <div className="event-card-footer"><span>{event.awayTeam?.abbreviation ?? 'AWY'} <i>·</i> {event.homeTeam?.abbreviation ?? 'HME'}</span></div>
+            <div className="event-card-footer"><span>{[event.awayTeam?.abbreviation, event.homeTeam?.abbreviation].filter(Boolean).join(' · ') || event.league}</span></div>
           </>
         )}
         {visible && !compact && (

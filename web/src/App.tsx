@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { discoverSources, checkBrowserSource, loadEventSummary, loadSportsSnapshot, loadTeamHub, searchStremioStreams, StalkerBrowserClient } from './data'
+import { discoverSources, checkBrowserSource, loadEventSummary, loadLeagueStandings, loadSportsSnapshot, loadTeamHub, searchStremioStreams, StalkerBrowserClient } from './data'
 import { buildHomeState, classifyPlaybackError, eventStatusLabel, isLive, parseQualityFromText, preferenceClasses, qualityRank, sportBackdrop, splitAddonInputs, validateProviderConfig } from './domain'
 import type { DeviceCapabilities, HomeState, IptvChannel, ProviderConfig, ProviderIssue, RallyPreferences, RallyRoute, SourceCandidate, SportEvent, SportsSnapshot, StremioStreamOption, TeamHubProfile } from './domain'
-import { navigate, parseRoute, routeHash, routeKey, topLevelPage } from './router'
+import { navigate, parseRoute, routeHash, routeKey } from './router'
+import { backGate, backTarget, requestOverlayClose } from './navigation'
 import { importPersonalization, readPlaybackCandidate, readPreferences, savePlaybackCandidate, savePlaybackCandidates, savePreferences, toggleFavoriteTeam } from './storage'
 import { Brand } from './components/Brand'
+import { Topbar } from './components/Topbar'
 import { EventCard } from './components/EventCard'
 import { Icon } from './components/Icon'
 import { LoadingState, EmptyState, ErrorState } from './components/States'
@@ -132,16 +134,23 @@ export default function App() {
   }, [refreshSports, route.page, snapshot?.events])
 
   const handleBack = useCallback(() => {
-    if (route.page === 'home') {
+    if (!backGate.tryAcquire('back')) return
+    if (scoreSaverActive) {
+      setScoreSaverActive(false)
+      return
+    }
+    if (requestOverlayClose()) return
+    const target = backTarget(route)
+    if (target.kind === 'exit') {
       window.close()
       return
     }
-    if (route.page === 'onboarding') {
+    if (target.kind === 'home') {
       navigate({ page: 'home' })
       return
     }
     window.history.back()
-  }, [route.page])
+  }, [route, scoreSaverActive])
 
   useTvPlatform(routeKey(route), refreshSports, handleBack)
 
@@ -262,17 +271,6 @@ function ScoreSaver({ events, onClose }: { events: SportEvent[]; onClose: () => 
 }
 
 
-function Topbar({ route }: { route: RallyRoute }) {
-  const items: Array<{ page: 'home' | 'live' | 'leagues' | 'highlights' | 'favorites'; label: string; live?: boolean }> = [
-    { page: 'home', label: 'HOME' },
-    { page: 'live', label: 'LIVE', live: true },
-    { page: 'leagues', label: 'LEAGUES' },
-    { page: 'highlights', label: 'HIGHLIGHTS' },
-    { page: 'favorites', label: 'MY TEAMS' },
-  ]
-  const activePage = topLevelPage(route)
-  return <header className="topbar" data-focus-zone="chrome" data-focus-row><Brand /><nav className="chrome-nav" aria-label="Primary navigation">{items.map((item) => <a key={item.page} className={`chrome-nav-item ${activePage === item.page ? 'is-active' : ''}`} href={routeHash({ page: item.page })}>{item.live && <span className="chrome-live-dot" />}{item.label}</a>)}</nav><div className="topbar-actions"><a className="topbar-settings" href={routeHash({ page: 'search' })} aria-label="Search"><Icon name="search" size={20} /></a><a className="topbar-settings" href={routeHash({ page: 'settings' })} aria-label="Settings"><Icon name="settings" size={20} /></a></div></header>
-}
 
 function HomePage({ homeState, snapshot, loading, error, onRetry, onOpen, onToggleFavorite, favoriteTeamIds, onNavigate }: { homeState: HomeState; snapshot: SportsSnapshot | null; loading: boolean; error: string | null; onRetry: () => void; onOpen: (event: SportEvent) => void; onToggleFavorite: (teamId: string) => void; favoriteTeamIds: string[]; onNavigate: (route: RallyRoute) => void }) {
   const featured = homeState.featuredEvent
@@ -282,18 +280,18 @@ function HomePage({ homeState, snapshot, loading, error, onRetry, onOpen, onTogg
     <section className={`hero ${featured ? sportBackdrop(featured.sport) : 'backdrop-football'}`}>
       <div className="hero-scrim" />
       {featured ? <div className="hero-copy">
-        <div className="hero-meta"><span className={isLive(featured) ? 'live-pill' : 'meta-pill'}>{homeState.heroMode.replace('_', ' ')}</span><span>{featured.eventContextTitle?.toUpperCase() || featured.league}</span></div>
+        <div className="hero-meta"><span className={isLive(featured) ? 'live-pill' : 'meta-pill'}>{homeState.heroMode === 'CLOSE_GAME' ? 'CLOSE GAME' : homeState.heroMode === 'LIVE' ? (featured.gameStatusDetail || 'LIVE') : homeState.heroMode === 'STARTING_SOON' ? 'STARTING SOON' : homeState.heroMode === 'FINAL_RECAP' ? 'FINAL RECAP' : 'FEATURED'}</span><span>{featured.eventContextTitle?.toUpperCase() || featured.league}</span></div>
         <div className="hero-score-row">
           <HeroTeam team={featured.awayTeam} />
           <div className="hero-score"><strong>{isLive(featured) || featured.status === 'FINISHED' ? `${featured.scoreAway ?? '–'}  –  ${featured.scoreHome ?? '–'}` : 'VS'}</strong><span>{eventStatusLabel(featured)}</span></div>
           <HeroTeam team={featured.homeTeam} home />
         </div>
-        <div className="hero-footer"><span>{[featured.venue, featured.eventContextTitle ?? featured.league].filter(Boolean).join('  ·  ')}</span><div className="hero-actions" data-focus-row><button className="button button-primary" data-initial-focus="true" onClick={() => onOpen(featured)}><Icon name={isLive(featured) ? 'play' : 'arrow'} size={14} />{isLive(featured) ? 'Watch live' : 'Game center'}</button><button className="button button-quiet hero-secondary" onClick={() => onOpen(featured)}>Details</button></div></div>
-      </div> : <div className="hero-copy hero-empty"><div className="hero-meta"><span className="live-pill">RALLY</span><span>READY FOR YOUR SOURCES</span></div><h2>Sports kept simple.</h2><p>Connect a public sports feed to browse real events, then add your own authorized IPTV portal or Stremio addon.</p><button className="button button-primary" onClick={() => onNavigate({ page: 'settings', section: 'sources' })}><Icon name="settings" size={14} />Configure sources</button></div>}
+        <div className="hero-footer"><span>{[featured.venue, featured.eventContextTitle ?? featured.league].filter(Boolean).join('  ·  ')}</span><div className="hero-actions" data-focus-row><button className="button button-primary" data-initial-focus="true" onClick={() => onOpen(featured)}><Icon name={isLive(featured) ? 'play' : 'arrow'} size={14} />{isLive(featured) ? 'Watch live' : featured.status === 'FINISHED' && (featured.highlightClips?.length ?? 0) > 0 ? 'Watch highlights' : 'Game center'}</button><button className="button button-quiet hero-secondary" onClick={() => onOpen(featured)}>Details</button></div></div>
+      </div> : <div className="hero-copy hero-empty"><div className="hero-meta"><span className="live-pill">RALLY · LIVE SPORTS</span></div><h2>Every game. One place.</h2><p>Live schedules, channels, and addon streams—kept simple.</p><button className="button button-primary" data-initial-focus="true" onClick={() => onNavigate({ page: 'live' })}><Icon name="play" size={14} />Browse Live TV</button></div>}
       <img className="hero-mark" src="./rally-assets/rally-mark-color.svg" alt="" />
     </section>
     {snapshot?.sourceIssues.length ? <div className="notice notice-warning"><Icon name="alert" size={16} /><span>Some leagues are unavailable right now. Rally is showing the events it could reach.</span></div> : null}
-    <HomeShelf title={homeState.liveEvents.length ? 'LIVE NOW' : 'UPCOMING'} events={[...homeState.liveEvents, ...homeState.upcomingEvents].filter((event, index, all) => all.findIndex((item) => item.id === event.id) === index).slice(0, 8)} emptyTitle="No games on the board" emptyBody="Rally will refresh the public sports schedule automatically." onOpen={onOpen} onToggleFavorite={onToggleFavorite} favoriteTeamIds={favoriteTeamIds} />
+    <HomeShelf liveCount={homeState.liveEvents.length} upcomingCount={homeState.upcomingEvents.length} events={[...homeState.liveEvents, ...homeState.upcomingEvents].filter((event, index, all) => all.findIndex((item) => item.id === event.id) === index).slice(0, 15)} onLiveTv={() => onNavigate({ page: 'live' })} onOpen={onOpen} onToggleFavorite={onToggleFavorite} favoriteTeamIds={favoriteTeamIds} />
     <SportShelf shelves={homeState.leagueShelves} onOpen={(league) => onNavigate({ page: 'league', league })} />
   </div>
 }
@@ -302,8 +300,10 @@ function HeroTeam({ team, home = false }: { team?: SportEvent['homeTeam']; home?
   return <div className={`hero-team ${home ? 'hero-team-home' : ''}`}><div className="hero-team-mark">{team?.logoUrl ? <img src={team.logoUrl} alt="" /> : <span>{team?.abbreviation ?? 'TBD'}</span>}</div><strong>{team?.name ?? 'Team pending'}</strong></div>
 }
 
-function HomeShelf({ title, events, emptyTitle, emptyBody, onOpen, onToggleFavorite, favoriteTeamIds }: { title: string; events: SportEvent[]; emptyTitle: string; emptyBody: string; onOpen: (event: SportEvent) => void; onToggleFavorite: (teamId: string) => void; favoriteTeamIds: string[] }) {
-  return <section className="home-shelf"><div className="section-heading"><h2>{title}</h2></div>{events.length ? <div className="home-card-row" data-focus-row data-focus-paging="true" data-focus-page-size="4">{events.map((event) => <EventCard key={event.id} event={event} compact onOpen={() => onOpen(event)} favoriteTeamIds={favoriteTeamIds} onToggleFavorite={onToggleFavorite} />)}</div> : <EmptyState title={emptyTitle} body={emptyBody} />}</section>
+function HomeShelf({ liveCount, upcomingCount, events, onLiveTv, onOpen, onToggleFavorite, favoriteTeamIds }: { liveCount: number; upcomingCount: number; events: SportEvent[]; onLiveTv: () => void; onOpen: (event: SportEvent) => void; onToggleFavorite: (teamId: string) => void; favoriteTeamIds: string[] }) {
+  const hasUpcoming = upcomingCount > 0 || events.some((event) => !isLive(event))
+  const title = liveCount === 0 || hasUpcoming ? 'LIVE / UPCOMING' : 'LIVE NOW'
+  return <section className="home-shelf"><div className="section-heading"><h2>{title}</h2></div>{events.length ? <div className="home-card-row" data-focus-row data-focus-paging="true" data-focus-page-size="4">{events.map((event) => <EventCard key={event.id} event={event} compact onOpen={() => onOpen(event)} favoriteTeamIds={favoriteTeamIds} onToggleFavorite={onToggleFavorite} />)}</div> : <div className="home-card-row" data-focus-row><button className="event-card event-card-compact event-card-empty" data-initial-focus="true" onClick={onLiveTv}><span className="event-card-empty-title">Live TV</span><span className="event-card-empty-body">No games in progress</span></button></div>}</section>
 }
 
 function SportShelf({ shelves, onOpen }: { shelves: HomeState['leagueShelves']; onOpen: (league: string) => void }) {
@@ -334,12 +334,12 @@ function LeagueMark({ league }: { league: string }) {
 
 
 function OnboardingPage(): React.ReactElement {
-  const features = [
-    { icon: 'football' as const, title: 'Sports', desc: 'Arrange leagues and favorite teams so Rally promotes the games that matter to you.' },
-    { icon: 'server' as const, title: 'Sources', desc: 'Add only the IPTV portals and Stremio addons you are authorized to use.' },
-    { icon: 'tv' as const, title: 'Watch', desc: 'Source selection, Game View, current highlights, and Multi-View from one remote-first interface.' },
+  const cards = [
+    { number: '01', title: 'Choose your sports', desc: 'Arrange leagues and favorite teams so Rally promotes the games that matter to you.' },
+    { number: '02', title: 'Connect your sources', desc: 'Add only the IPTV portals and Stremio addons you are authorized to use.' },
+    { number: '03', title: 'Watch your way', desc: 'Use automatic source selection, Game View, current highlights, and Multi-View from one remote-first interface.' },
   ]
-  return <div className="onboarding-page"><Brand /><h1>RALLY</h1><p>Sports kept simple.</p><div className="onboarding-cards">{features.map(({ icon, title, desc }) => <article key={title}><Icon name={icon} size={48} /><h2>{title}</h2><p>{desc}</p></article>)}</div><a className="button button-primary" data-initial-focus="true" href={routeHash({ page: 'settings', section: 'sources' })}>Continue to setup</a><small>Rally includes no television service or streams.</small></div>
+  return <div className="onboarding-page"><Brand /><h1>Sports, kept simple.</h1><p>Live games, verified sources, highlights, and the teams you follow—built for the biggest screen in your home.</p><div className="onboarding-cards">{cards.map(({ number, title, desc }) => <article key={number}><span className="onboarding-number">{number}</span><h2>{title}</h2><p>{desc}</p></article>)}</div><a className="button button-primary" data-initial-focus="true" href={routeHash({ page: 'settings', section: 'sources' })}>Continue to setup</a><small>Rally includes no television service or streams.</small></div>
 }
 
 function LeaguesPage({ events, loading, onOpenLeague }: { events: SportEvent[]; loading: boolean; onOpenLeague: (league: string) => void }) {
@@ -352,28 +352,42 @@ function LeagueHubPage({ league, events, onOpen }: { league: string; events: Spo
   const leagueEvents = events.filter((event) => event.league.toLowerCase() === league.toLowerCase())
   const [tab, setTab] = useState<'Games' | 'Standings' | 'Playoffs'>('Games')
   const [dayOffset, setDayOffset] = useState(0)
+  const [standings, setStandings] = useState<Array<{ team: string; summary: string }>>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadLeagueStandings(league, controller.signal).then(setStandings)
+    return () => controller.abort()
+  }, [league])
   const target = new Date()
   target.setDate(target.getDate() + dayOffset)
   const sameDay = (event: SportEvent) => {
     const date = new Date(event.startTime)
     return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth() && date.getDate() === target.getDate()
   }
-  const datedEvents = leagueEvents.filter(sameDay)
-  const gameEvents = datedEvents.length ? datedEvents : leagueEvents
-  const teams = Array.from(new Map(leagueEvents.flatMap((event) => [event.awayTeam, event.homeTeam]).filter((team): team is NonNullable<typeof team> => Boolean(team)).map((team) => [team.id, team])).values())
-  const postseason = leagueEvents.filter((event) => /playoff|postseason|championship|final/i.test(`${event.eventContextTitle ?? ''} ${event.name}`))
+  const gameEvents = leagueEvents.filter(sameDay)
+  const postseasonTerms = ['playoff', 'wild card', 'divisional', 'conference', 'championship', 'final', 'postseason']
+  const postseason = leagueEvents.filter((event) => {
+    const context = `${event.name} ${event.eventContextTitle ?? ''} ${event.gameStatusDetail ?? ''}`.toLowerCase()
+    return postseasonTerms.some((term) => context.includes(term))
+  })
+  const playoffCutoff = ['NFL', 'NCAAF'].includes(league.toUpperCase()) ? 14 : ['NBA', 'NHL', 'NCAAB'].includes(league.toUpperCase()) ? 16 : league.toUpperCase() === 'MLB' ? 12 : 8
+  const playoffPicture = standings.slice(0, playoffCutoff).map((entry, index) => ({ team: entry.team, summary: `Seed ${index + 1}${entry.summary ? ` · ${entry.summary}` : ''}` }))
+  const showStandings = standings.length > 0
+  const showPlayoffs = postseason.length > 0 || playoffPicture.length > 0
+  const dayLabel = dayOffset === -1 ? 'YESTERDAY' : dayOffset === 0 ? 'TODAY' : dayOffset === 1 ? 'TOMORROW' : target.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
+  const teamCount = standings.length || Array.from(new Set(leagueEvents.flatMap((event) => [event.awayTeam?.id, event.homeTeam?.id]).filter(Boolean))).length
   return <div className="league-center">
-    <header className="league-center-header"><div><span className="panel-label">RALLY SPORTS · LEAGUE CENTER</span><h1>{leagueName(league)}</h1><p>{leagueEvents.length} games · {teams.length} teams</p></div><nav data-focus-row><a className="button button-quiet" href={routeHash({ page: 'leagues' })}><Icon name="back" size={14} />Back</a>{(['Games', 'Standings', 'Playoffs'] as const).map((item) => <button key={item} className={`button ${tab === item ? 'button-primary' : 'button-quiet'}`} onClick={() => setTab(item)}>{item}</button>)}</nav></header>
-    {tab === 'Games' && <section><h2>GAMES</h2><div className="league-date-nav" data-focus-row><button className="button button-quiet" onClick={() => setDayOffset(dayOffset - 1)}>‹</button><strong>{dayOffset === 0 ? 'TODAY' : target.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()}</strong><button className="button button-quiet" onClick={() => setDayOffset(dayOffset + 1)}>›</button></div>{gameEvents.length ? <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{gameEvents.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[]} />)}</div> : <EmptyState title="No games listed" body="Use the date controls to browse another day." />}</section>}
-    {tab === 'Standings' && <section><h2>STANDINGS</h2><div className="standing-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{teams.map((team, index) => <article key={team.id}><span>STANDING</span>{team.logoUrl && <img src={team.logoUrl} alt="" />}<strong>{team.name}</strong><small>GB {index ? `${index * .5}` : '–'} · L 0 · T 0</small></article>)}</div></section>}
-    {tab === 'Playoffs' && <section><h2>PLAYOFFS</h2>{postseason.length ? <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{postseason.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[]} />)}</div> : <EmptyState title="No playoff picture yet" body={`${leagueName(league)} postseason games will appear when the league publishes them.`} />}</section>}
+    <header className="league-center-header"><div><span className="panel-label">RALLY SPORTS · LEAGUE CENTER</span><h1>{leagueName(league)}</h1><p>{leagueEvents.length} games · {teamCount} teams</p></div><nav data-focus-row><a className="button button-quiet" href={routeHash({ page: 'leagues' })}><Icon name="back" size={14} />Back</a>{(['Games', ...(showStandings ? ['Standings' as const] : []), ...(showPlayoffs ? ['Playoffs' as const] : [])] as const).map((item) => <button key={item} className={`button ${tab === item ? 'button-primary' : 'button-quiet'}`} onClick={() => setTab(item)}>{item}</button>)}</nav></header>
+    {tab === 'Games' && <section><h2>GAMES</h2><div className="league-date-nav" data-focus-row><button className="button button-quiet" onClick={() => setDayOffset(dayOffset - 1)}>‹</button><strong>{dayLabel}</strong><button className="button button-quiet" onClick={() => setDayOffset(dayOffset + 1)}>›</button>{dayOffset !== 0 && <button className="button button-quiet" onClick={() => setDayOffset(0)}>Today</button>}</div>{gameEvents.length ? <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{gameEvents.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[]} />)}</div> : <EmptyState title="No games are listed for this date." body="Use the date controls to browse another day." />}</section>}
+    {tab === 'Standings' && showStandings && <section><h2>STANDINGS</h2><div className="standing-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{standings.map((entry) => <article key={entry.team}><span>STANDING</span><strong>{entry.team}</strong><small>{entry.summary || 'Record pending'}</small></article>)}</div></section>}
+    {tab === 'Playoffs' && showPlayoffs && <section><h2>{postseason.length ? 'PLAYOFFS' : 'PLAYOFF PICTURE'}</h2>{postseason.length ? <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{postseason.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[]} />)}</div> : <div className="standing-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{playoffPicture.map((entry) => <article key={entry.team}><span>PLAYOFF POSITION</span><strong>{entry.team}</strong><small>{entry.summary}</small></article>)}</div>}</section>}
   </div>
 }
 function TeamHubPage({ league, teamId, events, saved, onOpen, onToggleFavorite }: { league: string; teamId: string; events: SportEvent[]; saved: boolean; onOpen: (event: SportEvent) => void; onToggleFavorite: () => void }) {
   const teamEvents = events.filter((event) => event.homeTeam?.id === teamId || event.awayTeam?.id === teamId)
   const team = teamEvents.flatMap((event) => [event.homeTeam, event.awayTeam]).find((entry) => entry?.id === teamId)
   const [hub, setHub] = useState<TeamHubProfile>()
-  const [tab, setTab] = useState<'Overview' | 'Games' | 'Roster'>('Overview')
+  const [tab, setTab] = useState<'Overview' | 'Games' | 'Roster' | 'Injuries'>('Overview')
   useEffect(() => {
     if (!team) return
     const controller = new AbortController()
@@ -381,13 +395,16 @@ function TeamHubPage({ league, teamId, events, saved, onOpen, onToggleFavorite }
     return () => controller.abort()
   }, [league, team, teamId])
   if (!team) return <EmptyState title="Team data is unavailable" body="The selected team is not in the current sports schedule." />
+  if (!saved) return <EmptyState title="Team pages are available only for your favorite teams." body={`${team.name} is not in your favorites yet. Follow it to unlock the full team hub.`} action={<div data-focus-row><button className="button button-primary button-small" data-initial-focus="true" onClick={onToggleFavorite}>Follow {team.abbreviation}</button><a className="button button-quiet button-small" href={routeHash({ page: 'favorites' })}>Back to My Teams</a></div>} />
   const completed = teamEvents.filter((event) => event.status === 'FINISHED').slice(-5)
   const nextGame = teamEvents.find((event) => event.status !== 'FINISHED')
+  const showInjuries = (hub?.injuries.length ?? 0) > 0
   return <div className="team-center">
-    <header className="team-center-header">{team.logoUrl ? <img src={team.logoUrl} alt="" /> : <span>{team.abbreviation}</span>}<div><span className="panel-label">MY TEAMS · {league}</span><h1>{team.name}</h1><p>{[hub?.record, hub?.standing].filter(Boolean).join(' · ') || 'Live, upcoming, and recent team information'}</p></div><nav data-focus-row><a className="button button-quiet" href={routeHash({ page: 'favorites' })}><Icon name="back" size={14} />Back</a>{(['Overview', 'Games', 'Roster'] as const).map((item) => <button className={`button ${tab === item ? 'button-primary' : 'button-quiet'}`} key={item} onClick={() => setTab(item)}>{item}</button>)}<button className="button button-quiet" onClick={onToggleFavorite}>{saved ? 'Remove' : 'Follow'}</button></nav></header>
+    <header className="team-center-header">{team.logoUrl ? <img src={team.logoUrl} alt="" /> : <span>{team.abbreviation}</span>}<div><span className="panel-label">MY TEAMS · {league}</span><h1>{team.name}</h1><p>{[hub?.record, hub?.standing].filter(Boolean).join(' · ') || 'Live, upcoming, and recent team information'}</p></div><nav data-focus-row><a className="button button-quiet" href={routeHash({ page: 'favorites' })}><Icon name="back" size={14} />Back</a>{(['Overview', 'Games', 'Roster', ...(showInjuries ? ['Injuries' as const] : [])] as const).map((item) => <button className={`button ${tab === item ? 'button-primary' : 'button-quiet'}`} key={item} onClick={() => setTab(item)}>{item}</button>)}<button className="button button-quiet" onClick={onToggleFavorite}>{saved ? 'Remove' : 'Follow'}</button></nav></header>
     {tab === 'Overview' && <section className="team-overview"><article><span className="panel-label">SEASON</span><strong>{hub?.record ?? 'Record pending'}</strong><span className="panel-label">RECENT FORM</span><div>{completed.length ? completed.map((event) => <b key={event.id}>{event.scoreHome === event.scoreAway ? 'D' : (event.homeTeam?.id === teamId ? (event.scoreHome ?? 0) > (event.scoreAway ?? 0) : (event.scoreAway ?? 0) > (event.scoreHome ?? 0)) ? 'W' : 'L'}</b>) : <p>No completed games yet.</p>}</div></article>{nextGame ? <button className={`team-next-game ${sportBackdrop(nextGame.sport)}`} onClick={() => onOpen(nextGame)}><span>{nextGame.league}</span><strong>{nextGame.name}</strong><small>{eventStatusLabel(nextGame)}</small></button> : <EmptyState title="No next game listed" body="The schedule will refresh automatically." />}</section>}
-    {tab === 'Games' && <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{teamEvents.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[teamId]} />)}</div>}
-    {tab === 'Roster' && <><div className="roster-grid" data-focus-grid data-focus-columns="4">{hub?.roster.length ? hub.roster.map((player) => <article key={player.id}>{player.headshotUrl ? <img src={player.headshotUrl} alt="" /> : <span>{player.jersey ?? '—'}</span>}<div><strong>{player.name}</strong><small>{[player.position, player.jersey && `#${player.jersey}`].filter(Boolean).join(' · ')}</small></div></article>) : <p>Roster data is unavailable.</p>}</div>{hub?.injuries.length ? <div className="injury-list">{hub.injuries.map((injury) => <article key={injury.id}><strong>{injury.playerName}</strong><span>{injury.status}</span>{injury.detail && <p>{injury.detail}</p>}</article>)}</div> : null}</>}
+    {tab === 'Games' && (teamEvents.length ? <div className="league-game-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{teamEvents.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={[teamId]} />)}</div> : <EmptyState title="No games are listed for this team." body="Check back when the league publishes the team schedule." />)}
+    {tab === 'Roster' && <div className="roster-grid" data-focus-grid data-focus-columns="4">{hub?.roster.length ? hub.roster.map((player) => <article key={player.id}>{player.headshotUrl ? <img src={player.headshotUrl} alt="" /> : <span>{player.jersey ?? '—'}</span>}<div><strong>{player.name}</strong><small>{[player.position, player.jersey && `#${player.jersey}`].filter(Boolean).join(' · ')}</small></div></article>) : <p>Roster data is not available.</p>}</div>}
+    {tab === 'Injuries' && showInjuries && <div className="standing-row" data-focus-row data-focus-paging="true" data-focus-page-size="5">{hub?.injuries.map((injury) => <article key={injury.id}><span>{injury.status.toUpperCase()}</span><strong>{injury.playerName}</strong>{injury.detail && <small>{injury.detail}</small>}</article>)}</div>}
   </div>
 }
 
@@ -439,7 +456,7 @@ function SearchPage({ query, onQueryChange, events, favoriteTeamIds, config, onO
     onPlay({ id: `stremio:${stream.streamUrl}`, sourceKind: 'STREMIO', title: stream.title, playbackTarget: stream.streamUrl, headers: stream.headers, quality, qualityRank: qualityRank(quality), exactGameMatch: false, matchConfidence: .7, matchEvidence: 'Selected from addon search', stremioStream: stream, browserStatus: stream.isDirectPlayable ? 'unknown' : 'unsupported' })
   }
   const resultCount = results.length + teams.length + leagues.length + channels.length + streams.length
-  return <div className="search-page"><header className="search-page-header"><span className="panel-label">RALLY · GLOBAL SEARCH</span><button className="back-link" onClick={() => onQueryChange('')}>Back</button></header><div className="search-large"><Icon name="search" size={24} /><input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search games, teams, leagues, channels, addons" aria-label="Search Rally" /></div>{!normalized ? <EmptyState title="Search the whole desk" body="Find games, teams, leagues, provider channels, EPG programs, and addon streams." /> : <><div className="search-summary"><strong>{resultCount}</strong> results for <span>"{query}"</span>{searching && <small> · Searching providers…</small>}</div>{results.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Games</h2></div><div className="event-grid">{results.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={favoriteTeamIds} />)}</div></section>}{teams.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Teams</h2></div><div className="team-results">{teams.map((team) => <button className="team-result" key={`${team.league}:${team.id}`} onClick={() => onOpenTeam(team.league, team.id)}>{team.logoUrl ? <img src={team.logoUrl} alt="" /> : <span>{team.abbreviation}</span>}<div><strong>{team.name}</strong><small>{team.league}</small></div></button>)}</div></section>}{leagues.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Leagues</h2></div><div className="team-results">{leagues.map((league) => <button className="team-result" key={league} onClick={() => onOpenLeague(league)}><LeagueMark league={league} /><strong>{leagueName(league)}</strong></button>)}</div></section>}{channels.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Live TV</h2></div><div className="channel-grid">{channels.map((channel) => <button className="channel-card" key={channel.id} onClick={() => void playChannel(channel)}><span className="channel-logo">{channel.logoUrl ? <img src={channel.logoUrl} alt="" /> : channel.number}</span><span className="channel-copy"><strong>{channel.name}</strong><small>{channel.guide?.now?.title ?? channel.category}</small></span></button>)}</div></section>}{streams.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Addon streams</h2></div><div className="source-list">{streams.map((stream) => <button className="source-picker-row" key={stream.streamUrl} onClick={() => playStream(stream)}><span><strong>{stream.title}</strong><small>{stream.addonName}</small></span><b>{stream.quality ?? 'PLAY'}</b></button>)}</div></section>}{!searching && resultCount === 0 && <EmptyState title="Nothing matched" body="Try a shorter team, channel, or league name." />}</>}</div>
+  return <div className="search-page"><header className="search-page-header"><span className="panel-label">RALLY · GLOBAL SEARCH</span>{normalized ? <button className="back-link" onClick={() => onQueryChange('')}>Clear</button> : <a className="back-link" href={routeHash({ page: 'home' })}>Back</a>}</header><div className="search-large"><Icon name="search" size={24} /><input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search games, teams, leagues, channels, addons" aria-label="Search Rally" /></div>{!normalized ? <EmptyState title="Search the whole desk" body="Find games, teams, leagues, provider channels, EPG programs, and addon streams." /> : <><div className="search-summary"><strong>{resultCount}</strong> results for <span>"{query}"</span>{searching && <small> · Searching providers…</small>}</div>{results.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Games</h2></div><div className="event-grid">{results.map((event) => <EventCard key={event.id} event={event} onOpen={() => onOpen(event)} favoriteTeamIds={favoriteTeamIds} />)}</div></section>}{teams.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Teams</h2></div><div className="team-results">{teams.map((team) => <button className="team-result" key={`${team.league}:${team.id}`} onClick={() => onOpenTeam(team.league, team.id)}>{team.logoUrl ? <img src={team.logoUrl} alt="" /> : <span>{team.abbreviation}</span>}<div><strong>{team.name}</strong><small>{team.league}</small></div></button>)}</div></section>}{leagues.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Leagues</h2></div><div className="team-results">{leagues.map((league) => <button className="team-result" key={league} onClick={() => onOpenLeague(league)}><LeagueMark league={league} /><strong>{leagueName(league)}</strong></button>)}</div></section>}{channels.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Live TV</h2></div><div className="channel-grid">{channels.map((channel) => <button className="channel-card" key={channel.id} onClick={() => void playChannel(channel)}><span className="channel-logo">{channel.logoUrl ? <img src={channel.logoUrl} alt="" /> : channel.number}</span><span className="channel-copy"><strong>{channel.name}</strong><small>{channel.guide?.now?.title ?? channel.category}</small></span></button>)}</div></section>}{streams.length > 0 && <section className="content-section compact-section"><div className="section-heading"><h2>Addon streams</h2></div><div className="source-list">{streams.map((stream) => <button className="source-picker-row" key={stream.streamUrl} onClick={() => playStream(stream)}><span><strong>{stream.title}</strong><small>{stream.addonName}</small></span><b>{stream.quality ?? 'PLAY'}</b></button>)}</div></section>}{!searching && resultCount === 0 && <EmptyState title="Nothing matched" body="Try a shorter team, channel, or league name." />}</>}</div>
 }
 
 function FavoritesPage({ events, favoriteTeamIds, onOpen, onOpenTeam, onToggleFavorite }: { events: SportEvent[]; favoriteTeamIds: string[]; onOpen: (event: SportEvent) => void; onOpenTeam: (league: string, teamId: string) => void; onToggleFavorite: (teamId: string) => void }) {
@@ -457,6 +474,12 @@ function EventDetailPage({ event, sourceState, onBack, onRefresh, onPlay, onChec
     void loadEventSummary(event).then((next) => { if (active) setSummary(next) })
     return () => { active = false }
   }, [event])
+  useEffect(() => {
+    if (!showSources) return
+    const close = () => setShowSources(false)
+    window.addEventListener('rally:close-overlay', close)
+    return () => window.removeEventListener('rally:close-overlay', close)
+  }, [showSources])
   const isLiveGame = isLive(summary)
   const homeProbability = summary.winProbability?.at(-1)?.homeWinPercentage
   const homePercent = homeProbability === undefined ? 50 : Math.round(homeProbability * 100)
@@ -531,7 +554,24 @@ function SettingsPage({ preferences, capabilities, onSaveConfig, onChange, initi
   void importPersonalization
   return <div className="settings-shell"><aside className="settings-sidebar" data-focus-zone="settings"><span className="panel-label">SETTINGS</span><nav data-focus-column>{sections.map(([title, subtitle]) => <button key={title} className={section === title ? 'is-active' : ''} onClick={() => setSection(title)}><strong>{title}</strong><small>{subtitle}</small></button>)}</nav><button className="button button-quiet" onClick={() => navigate({ page: 'home' })}>‹ Home</button></aside><section className="settings-content" data-focus-zone="content">
     {section === 'Sources' && <SourcesPage config={preferences.provider} onSave={onSaveConfig} />}
-    {section === 'Sports' && <div className="settings-panel"><h2>Sports</h2><p className="field-help">Enable leagues shown across the app. League shelves follow alphabetical order.</p><div className="settings-toggle-list">{preferences.viewing.sportsOrder.map((league) => <button key={league} className={`settings-toggle ${preferences.viewing.enabledLeagues.includes(league) ? 'is-on' : ''}`} onClick={() => toggleLeague(league)}><span>{leagueName(league)}</span><b>{preferences.viewing.enabledLeagues.includes(league) ? 'ON' : 'OFF'}</b></button>)}</div></div>}
+    {section === 'Sports' && <div className="settings-panel"><h2>Sports</h2><p className="field-help">Choose what appears on Home and arrange shelf priority.</p><div className="settings-sport-list">{preferences.viewing.sportsOrder.map((league, index) => {
+      const allEnabled = preferences.viewing.enabledLeagues.length === 0
+      const enabled = allEnabled || preferences.viewing.enabledLeagues.includes(league)
+      const favorite = preferences.viewing.favoriteSports.includes(league)
+      const moveSport = (delta: -1 | 1) => {
+        const order = [...preferences.viewing.sportsOrder]
+        const target = index + delta
+        if (target < 0 || target >= order.length) return
+        const [entry] = order.splice(index, 1)
+        order.splice(target, 0, entry)
+        onChange({ ...preferences, viewing: { ...preferences.viewing, sportsOrder: order } })
+      }
+      const toggleFavoriteSport = () => {
+        const current = preferences.viewing.favoriteSports
+        onChange({ ...preferences, viewing: { ...preferences.viewing, favoriteSports: current.includes(league) ? current.filter((item) => item !== league) : [...current, league] } })
+      }
+      return <div className="settings-sport-row" key={league}><span className="settings-sport-index">{index + 1}</span><div className="settings-sport-copy"><strong>{leagueName(league)}</strong><small>{enabled ? 'Shown on Home' : 'Hidden from Home'}</small></div><div className="settings-sport-actions" data-focus-row><button className={`button button-quiet button-small ${favorite ? 'is-selected' : ''}`} onClick={toggleFavoriteSport}>{favorite ? 'Favorited' : 'Favorite'}</button><button className={`button button-quiet button-small ${enabled ? 'is-selected' : ''}`} onClick={() => toggleLeague(league)}>{enabled ? 'Enabled' : 'Hidden'}</button><button className="button button-quiet button-small" disabled={index === 0} onClick={() => moveSport(-1)} aria-label={`Move ${leagueName(league)} up`}>↑</button><button className="button button-quiet button-small" disabled={index === preferences.viewing.sportsOrder.length - 1} onClick={() => moveSport(1)} aria-label={`Move ${leagueName(league)} down`}>↓</button></div></div>
+    })}</div>{preferences.viewing.enabledLeagues.length === 0 && <p className="field-help">All leagues are currently enabled. Toggling a league starts a custom selection.</p>}</div>}
     {section === 'Teams' && <div className="settings-panel"><h2>Favorite teams</h2><p className="field-help">Favorite profiles drive Home ranking, alerts, and team hubs.</p>{preferences.favoriteTeams.length ? <div className="settings-toggle-list">{preferences.favoriteTeams.map((team) => <div className="settings-toggle-row" key={`${team.league}:${team.id}`}>{team.logoUrl && <img src={team.logoUrl} alt="" />}<strong>{team.name}</strong><span>{team.league}</span><button onClick={() => onChange({ ...preferences, favoriteTeams: preferences.favoriteTeams.filter((item) => !(item.id === team.id && item.league === team.league)) })}>Remove</button></div>)}</div> : <p>Choose the star on a game or team to add it here.</p>}</div>}
     {(section === 'Alerts' || section === 'Viewing') && <div className="settings-panel"><h2>{section === 'Alerts' ? 'Live Alerts' : 'Viewing'}</h2><p className="field-help">{section === 'Alerts' ? 'Choose which sports moments can interrupt your TV experience.' : 'Tune playback, accessibility, and the idle TV experience.'}</p><div className="settings-toggle-list">{toggles.map(([key, label]) => <button key={key} className={`settings-toggle ${preferences.viewing[key] ? 'is-on' : ''}`} onClick={() => toggleViewing(key)}><span>{label}</span><b>{preferences.viewing[key] ? 'ON' : 'OFF'}</b></button>)}</div></div>}
     {section === 'Support' && <div className="settings-panel"><h2>Support</h2><p>App version 1.0.0 (webOS build 1)</p><div className="support-grid"><section><h3>Device information</h3><p>Device: {capabilities.webos ? 'LG webOS TV' : 'Browser preview'}</p><p>Runtime: {capabilities.userAgent}</p><p>Native HLS: {capabilities.nativeHls ? 'available' : 'unavailable'} · Media Source: {capabilities.mediaSource ? 'available' : 'unavailable'}</p><p>Network service: {capabilities.serviceBridge ? 'available' : 'unavailable'} · Multi-View limit: {capabilities.maxConcurrentStreams}</p><button className="button button-primary button-small" onClick={() => void runDiagnostics()}>Run checks</button></section><section><h3>Report &amp; licenses</h3><p className="field-help">Send anonymized diagnostics to Rally support, or review bundled open-source licenses.</p><div data-focus-row style={{ display: 'flex', gap: 8 }}><button className="button button-quiet button-small" onClick={() => setSupportMessage('Diagnostics package copied for support review.')}>Report a problem</button><button className="button button-quiet button-small" onClick={() => setSupportMessage('Rally OSS licenses: React, Vite, hls.js, webOS TV SDK samples (see NOTICE in repo).')}>View Licenses</button></div>{supportMessage && <pre className="support-report">{supportMessage}</pre>}</section></div></div>}

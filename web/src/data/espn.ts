@@ -337,6 +337,47 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
     return event
   }
 }
+export interface LeagueStanding {
+  team: string
+  summary: string
+}
+function walkJson(value: unknown, visit: (record: JsonRecord) => void): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => walkJson(entry, visit))
+    return
+  }
+  if (value && typeof value === 'object') {
+    const record = value as JsonRecord
+    visit(record)
+    Object.values(record).forEach((entry) => walkJson(entry, visit))
+  }
+}
+/** Port of Android EspnRepositoryImpl.getLeagueHub standings parsing. */
+export async function loadLeagueStandings(leagueKey: string, signal?: AbortSignal): Promise<LeagueStanding[]> {
+  const descriptor = LEAGUES.find((item) => item.key.toLowerCase() === leagueKey.toLowerCase())
+  if (!descriptor) return []
+  try {
+    const root = await fetchJson<unknown>(`https://site.api.espn.com/apis/v2/sports/${descriptor.sport}/${descriptor.league}/standings`, signal)
+    const standings: LeagueStanding[] = []
+    walkJson(root, (record) => {
+      const team = asRecord(record.team)
+      const stats = asArray(record.stats)
+      if (!team || !stats.length) return
+      const name = stringValue(team.displayName) ?? stringValue(team.name)
+      if (!name) return
+      const summary = stats.map(asRecord).map((stat) => {
+        const label = stringValue(stat.shortDisplayName) ?? stringValue(stat.name)
+        const value = stringValue(stat.displayValue)
+        if (!label || value === undefined) return null
+        return ['w', 'l', 't', 'pct', 'gb'].includes(label.toLowerCase()) ? `${label} ${value}` : null
+      }).filter((entry): entry is string => Boolean(entry)).slice(0, 3).join(' · ')
+      standings.push({ team: name, summary })
+    })
+    return Array.from(new Map(standings.map((entry) => [entry.team, entry])).values())
+  } catch {
+    return []
+  }
+}
 
 export async function loadTeamHub(leagueKey: string, teamId: string, fallback: Team, signal?: AbortSignal): Promise<TeamHubProfile> {
   const descriptor = LEAGUES.find((item) => item.key.toLowerCase() === leagueKey.toLowerCase())

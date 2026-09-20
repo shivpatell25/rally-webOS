@@ -31,7 +31,7 @@ export const EventCard = memo(function EventCard({ event, onOpen, compact = fals
   return (
     <article ref={ref} className={`event-card ${compact ? 'event-card-compact' : ''} ${sportBackdrop(event.sport)} ${isLive ? 'event-card-live' : ''}`}>
       <button className="event-card-main" onClick={onOpen} aria-label={`Open ${event.name}`}>
-        {visible && (
+        {visible && compact && (
           <>
             <div className="event-card-topline">
               <span className={isLive ? 'live-dot-label' : 'event-league'}>{isLive && <span className="live-dot" />}{isLive ? 'LIVE' : event.league}</span>
@@ -40,10 +40,30 @@ export const EventCard = memo(function EventCard({ event, onOpen, compact = fals
             <div className="matchup">
               <div className="matchup-team"><TeamMark abbreviation={event.awayTeam?.abbreviation ?? 'AWY'} logoUrl={event.awayTeam?.logoUrl} /></div>
               <div className="matchup-score"><strong>{event.scoreAway ?? '—'}</strong><i>–</i><strong>{event.scoreHome ?? '—'}</strong></div>
-              <div className="matchup-team"><TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} /></div>
+              <div className="matchup-team match-team-home"><TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} /></div>
             </div>
             <div className="event-card-footer"><span>{event.awayTeam?.abbreviation ?? 'AWY'} <i>·</i> {event.homeTeam?.abbreviation ?? 'HME'}</span></div>
           </>
+        )}
+        {visible && !compact && (
+          <div className="event-card-vertical">
+            <div className="event-card-vertical-top">
+              <span className="event-league">{event.league}</span>
+              <span className="event-date">{eventStatusLabel(event)}</span>
+            </div>
+            <div className="event-card-vertical-bottom">
+              <div className="vertical-matchup-logos">
+                <TeamMark abbreviation={event.awayTeam?.abbreviation ?? 'AWY'} logoUrl={event.awayTeam?.logoUrl} />
+                <span>{event.scoreAway && event.scoreHome ? `${event.scoreAway} - ${event.scoreHome}` : 'AT'}</span>
+                <TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} />
+              </div>
+              <div className="vertical-matchup-names">
+                <strong>{event.awayTeam?.name ?? 'Away'}</strong>
+                <small>at {event.homeTeam?.name ?? 'Home'}</small>
+                <span className="event-venue">{event.venue || 'Venue TBD'}</span>
+              </div>
+            </div>
+          </div>
         )}
       </button>
       {visible && onToggleFavorite && event.homeTeam && event.awayTeam && (

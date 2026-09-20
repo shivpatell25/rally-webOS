@@ -462,23 +462,22 @@ function EventDetailPage({ event, sourceState, onBack, onRefresh, onPlay, onChec
   const awayPercent = 100 - homePercent
   return <div className="event-center">
     <section className={`event-center-hero ${sportBackdrop(summary.sport)}`}>
-      <div className="detail-hero-shade" />
       <div className="event-center-copy">
         <div className="hero-meta"><span className={isLiveGame ? 'live-pill' : 'meta-pill'}>{isLiveGame ? 'LIVE' : summary.status === 'FINISHED' ? 'FINAL' : eventStatusLabel(summary)}</span><span>{summary.eventContextTitle?.toUpperCase() || summary.league}</span></div>
-        <div className="event-center-score">
-          <div><TeamBadge team={summary.awayTeam} /><strong>{summary.awayTeam?.name ?? 'Away'}</strong></div>
-          <div><b>{summary.scoreAway ?? '–'} <i>–</i> {summary.scoreHome ?? '–'}</b><span>{summary.gameStatusDetail || eventStatusLabel(summary)}</span></div>
-          <div><TeamBadge team={summary.homeTeam} /><strong>{summary.homeTeam?.name ?? 'Home'}</strong></div>
+        <div className="event-center-score-stack">
+          <div className="event-center-score-team"><TeamBadge team={summary.awayTeam} /><strong>{summary.awayTeam?.name ?? 'Away'}</strong></div>
+          <div className="event-center-score-points"><b>{summary.scoreAway ?? '–'} <i>–</i> {summary.scoreHome ?? '–'}</b><span>{summary.gameStatusDetail || eventStatusLabel(summary)}</span></div>
+          <div className="event-center-score-team"><TeamBadge team={summary.homeTeam} /><strong>{summary.homeTeam?.name ?? 'Home'}</strong></div>
         </div>
-        <div className="event-center-footer"><span>{summary.venue || 'Venue not reported'}{summary.broadcastStations.length ? ` · ${summary.broadcastStations.join(', ')}` : ''}</span><div data-focus-row><button className="button button-primary" data-initial-focus="true" onClick={() => setShowSources(true)}>Choose broadcast</button><button className={`button button-quiet ${favoriteTeamIds.includes(summary.homeTeam?.id ?? '') ? 'is-selected' : ''}`} onClick={() => summary.homeTeam && onToggleFavorite(summary.homeTeam.id)}><Icon name="star" size={14} />{favoriteTeamIds.includes(summary.homeTeam?.id ?? '') ? 'Saved' : 'Save'}</button><button className="button button-quiet" onClick={onBack}><Icon name="back" size={14} />Back</button></div></div>
+        <div className="event-center-footer"><span>{summary.venue || 'Venue not reported'}{summary.broadcastStations.length ? ` · ${summary.broadcastStations.join(', ')}` : ''}</span><div className="event-center-hero-actions" data-focus-row><button className="button button-primary" data-initial-focus="true" onClick={() => setShowSources(true)}>Choose broadcast</button><button className={`button button-quiet ${favoriteTeamIds.includes(summary.homeTeam?.id ?? '') ? 'is-selected' : ''}`} onClick={() => summary.homeTeam && onToggleFavorite(summary.homeTeam.id)}><Icon name="star" size={14} />{favoriteTeamIds.includes(summary.homeTeam?.id ?? '') ? 'Saved' : 'Save'}</button><button className="button button-quiet" onClick={onBack}><Icon name="back" size={14} />Back</button></div></div>
       </div>
     </section>
-    {showSources ? <section className="broadcast-picker" data-focus-scope="modal">
-      <header><div><span className="panel-label">CHOOSE A BROADCAST</span><h2>{summary.name}</h2></div><button className="button button-quiet" onClick={() => setShowSources(false)}>Matchup</button></header>
+    {showSources ? <section className="broadcast-picker-full" data-focus-scope="modal">
+      <header><button className="button button-quiet" autoFocus data-initial-focus="true" onClick={() => setShowSources(false)}><Icon name="back" size={14} />Matchup</button><div className="broadcast-picker-header-titles"><h2>Choose a broadcast</h2><span>{summary.name}</span></div></header>
       <div className="broadcast-source-list" data-focus-column>
         {sourceState.loading && <LoadingState label="Matching configured sources" />}
         {sourceState.candidates.map((candidate) => <SourceCard key={candidate.id} candidate={candidate} onPlay={() => onPlay(candidate)} onCheck={() => onCheck(candidate)} />)}
-        {!sourceState.loading && !sourceState.candidates.length && <EmptyState title="No broadcast is available yet" body="Broadcasts can appear closer to game time. Check again later or review Sources in Settings." action={<><button className="button button-quiet button-small" onClick={onRefresh}>Try again</button><a className="button button-primary button-small" href={routeHash({ page: 'settings', section: 'sources' })}>Sources</a></>} />}
+        {!sourceState.loading && !sourceState.candidates.length && <div className="broadcast-picker-empty"><h3>No broadcast is available yet</h3><p>Broadcasts can appear closer to game time. Check again later or review Sources in Settings.</p><div data-focus-row><button className="button button-quiet" onClick={onRefresh}>Try again</button><a className="button button-primary" href={routeHash({ page: 'settings', section: 'sources' })}>Sources</a></div></div>}
         {sourceState.issues.map((issue, index) => <div className="notice notice-warning" key={`${issue.provider}-${index}`}><Icon name="alert" size={16} /><span>{issue.provider}: {issue.message}</span></div>)}
       </div>
     </section> : <div className="event-insight-grid">

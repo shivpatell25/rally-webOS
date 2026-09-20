@@ -14,6 +14,29 @@ Rally is a sports-first Android TV app. It combines ESPN schedules and live data
 - D-pad navigation designed for Android TV and Google TV
 - Signed in-app update checks backed by GitHub Releases and Android's system installer
 
+## Web app
+
+Rally also includes a laptop/browser surface in [`web/`](web/). It is a Vite + React + TypeScript PWA that carries the Android TV visual language into a keyboard-, mouse-, and touch-friendly layout. Provider discovery and playback remain browser-side; the current web slice does not require a Rally backend.
+
+Run it locally:
+
+```shell
+cd web
+npm install
+npm run dev
+```
+
+The dev server listens on `http://127.0.0.1:4173` by default. Web checks can be run with:
+
+```shell
+npm run typecheck
+npm test
+npm run lint
+npm run build
+```
+
+The browser surface uses ESPN's public scoreboard data and provider settings entered under **Sources & settings**. Browser CORS, codec, DRM, authorization, and mixed-content policies still apply. See the [web app guide](web/README.md) for provider configuration and browser-specific limitations.
+
 ## Architecture
 
 - Presentation: Jetpack Compose, Compose for TV, MVVM, lifecycle-aware StateFlow collection

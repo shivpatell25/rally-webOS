@@ -355,11 +355,14 @@ h2 { letter-spacing: -.025em; }
 .league-directory-card { flex-basis: 255px; height: 235px; padding: 15px; }
 .league-directory-card .sport-card-logo { width: 78px; height: 78px; margin-top: 17px; }
 .league-directory-card .sport-card-mark { margin-top: 20px; font-size: 26px; }
-
-.search-large { display: flex; align-items: center; gap: 13px; border-bottom: 1px solid var(--line); padding: 16px 0; color: var(--cyan); }
-.search-large:focus-within { border-color: var(--cyan); }
-.search-large input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--off-white); font-size: 32px; letter-spacing: -.03em; }
+.search-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.search-page-header .panel-label { color: var(--cyan); font-size: 12px; font-weight: 800; letter-spacing: .16em; }
+.search-page-header .back-link { color: var(--text-secondary); font-size: 14px; text-decoration: underline; }
+.search-large { display: flex; align-items: center; gap: 16px; height: 84px; border: 2px solid var(--line); border-radius: 12px; background: var(--slate); padding: 0 24px; color: var(--off-white); }
+.search-large:focus-within { border-color: var(--cyan); box-shadow: 0 0 0 4px rgba(43,155,199,.12); }
+.search-large input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--off-white); font-size: 28px; letter-spacing: -.02em; }
 .search-large input::placeholder { color: var(--text-tertiary); }
+.search-large Icon { flex-shrink: 0; color: var(--text-secondary); }
 .search-summary { margin-top: 22px; color: var(--text-secondary); font-size: 11px; }
 .search-summary strong, .search-summary span { color: var(--off-white); }
 .team-results { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }

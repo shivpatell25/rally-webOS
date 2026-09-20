@@ -7,6 +7,7 @@
   "title": "Rally",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
+  "splashBackground": "splashBackground.png",
   "bgColor": "#05080F",
   "resolution": "1920x1080",
   "disableBackHistoryAPI": true,

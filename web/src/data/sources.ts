@@ -13,7 +13,7 @@ export async function discoverSources(event: SportEvent, input: ProviderConfig, 
 
   if (validation.config.portalUrl) {
     tasks.push((async () => {
-      const client = new StalkerBrowserClient(validation.config.portalUrl, validation.config.macAddress)
+      const client = new StalkerBrowserClient(validation.config)
       const result = await client.getChannels()
       if (result.issue) return { candidates: [], issues: [result.issue] }
       const candidates = result.channels.filter(channelLooksLikeSport).map((channel) => matchChannelToEvent(channel, event)).filter((candidate): candidate is SourceCandidate => Boolean(candidate))

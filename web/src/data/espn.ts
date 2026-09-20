@@ -1,5 +1,5 @@
 import { asArray, asRecord, stringValue } from '../domain'
-import type { HighlightClip, JsonRecord, SportEvent, SportsSnapshot, Team, EventStatus } from '../domain'
+import type { HighlightClip, JsonRecord, SportEvent, SportsSnapshot, Team, TeamHubProfile, TeamInjury, TeamPlayer, EventStatus } from '../domain'
 
 
 export interface LeagueDescriptor {
@@ -41,7 +41,7 @@ function formatDateForEspn(date: Date): string {
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 12_000)
+  const timeoutId = setTimeout(() => controller.abort(), 12_000)
   const forwardAbort = () => controller.abort()
   signal?.addEventListener('abort', forwardAbort, { once: true })
   try {
@@ -49,7 +49,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     if (!response.ok) throw new Error(`Sports feed returned HTTP ${response.status}`)
     return await response.json() as T
   } finally {
-    window.clearTimeout(timeout)
+    clearTimeout(timeoutId)
     signal?.removeEventListener('abort', forwardAbort)
   }
 }
@@ -80,6 +80,129 @@ function teamFrom(raw: unknown): Team | undefined {
     logoUrl: stringValue(team.logo) ?? stringValue(asRecord(asArray(team.logos)[0]).href),
     colors: [stringValue(team.color), stringValue(team.alternateColor)].filter((color): color is string => Boolean(color)),
   }
+}
+function summaryDetails(payload: JsonRecord, event: SportEvent): Pick<SportEvent, 'teamStats' | 'playerLeaders' | 'winProbability' | 'playerStatTables' | 'plays'> {
+  const boxscore = asRecord(payload.boxscore)
+  const boxTeams = asArray(boxscore.teams).map(asRecord)
+  const findBoxTeam = (teamId?: string, abbreviation?: string) => boxTeams.find((entry) => {
+    const team = asRecord(entry.team)
+    return stringValue(team.id) === teamId || stringValue(team.abbreviation)?.toLowerCase() === abbreviation?.toLowerCase()
+  })
+  const awayBox = findBoxTeam(event.awayTeam?.id, event.awayTeam?.abbreviation) ?? boxTeams[0]
+  const homeBox = findBoxTeam(event.homeTeam?.id, event.homeTeam?.abbreviation) ?? boxTeams.at(-1)
+  const statsFor = (team: JsonRecord | undefined) => asArray(team?.statistics).map(asRecord)
+  const statValue = (team: JsonRecord | undefined, key: string, label: string) => {
+    const stat = statsFor(team).find((entry) => stringValue(entry.name)?.toLowerCase() === key.toLowerCase() || stringValue(entry.label)?.toLowerCase() === label.toLowerCase())
+    return stringValue(stat?.displayValue)
+  }
+  const sport = `${event.sport} ${event.league}`.toLowerCase()
+  const preferred = sport.includes('football')
+    ? [['netPassingYards', 'Passing'], ['rushingYards', 'Rushing'], ['totalYards', 'Total Yds'], ['turnovers', 'Turnovers'], ['firstDowns', '1st Downs']]
+    : sport.includes('basket')
+      ? [['fieldGoals', 'FG%'], ['threePointFieldGoals', '3PT%'], ['totalRebounds', 'Rebounds'], ['turnovers', 'Turnovers'], ['assists', 'Assists']]
+      : sport.includes('base')
+        ? [['hits', 'Hits'], ['errors', 'Errors'], ['strikeouts', 'Strikeouts'], ['walks', 'Walks']]
+        : sport.includes('hock')
+          ? [['shots', 'SOG'], ['powerPlayGoals', 'Power Play'], ['blockedShots', 'Blocks'], ['hits', 'Hits']]
+          : [['shotsOnTarget', 'SOG'], ['possession', 'Possession'], ['fouls', 'Fouls'], ['cornerKicks', 'Corners']]
+  const teamStats = preferred.flatMap(([key, label]) => {
+    const awayValue = statValue(awayBox, key, label)
+    const homeValue = statValue(homeBox, key, label)
+    return awayValue || homeValue ? [{ label, awayValue: awayValue ?? '–', homeValue: homeValue ?? '–' }] : []
+  })
+  const predictor = asRecord(payload.predictor)
+  const awayProjection = numberValue(asRecord(predictor.awayTeam).gameProjection)
+  const homeProjection = numberValue(asRecord(predictor.homeTeam).gameProjection)
+  if (awayProjection !== undefined || homeProjection !== undefined) {
+    teamStats.push({ label: 'Win Prob', awayValue: awayProjection === undefined ? '–' : `${awayProjection}%`, homeValue: homeProjection === undefined ? '–' : `${homeProjection}%` })
+  }
+
+  const playerLeaders = asArray(payload.leaders).flatMap((rawGroup) => {
+    const group = asRecord(rawGroup)
+    const team = asRecord(group.team)
+    return asArray(group.leaders).flatMap((rawCategory) => {
+      const category = asRecord(rawCategory)
+      const leader = asRecord(asArray(category.leaders)[0])
+      const athlete = asRecord(leader.athlete)
+      const playerShortName = stringValue(athlete.shortName) ?? stringValue(athlete.displayName) ?? stringValue(athlete.fullName)
+      const statDisplay = stringValue(leader.displayValue) ?? stringValue(leader.value)
+      if (!playerShortName || !statDisplay) return []
+      return [{
+        category: stringValue(category.displayName) ?? stringValue(category.name) ?? 'Leader',
+        teamLogoUrl: stringValue(team.logo),
+        teamAbbreviation: stringValue(team.abbreviation),
+        playerShortName,
+        statDisplay,
+        position: stringValue(asRecord(athlete.position).abbreviation),
+        headshotUrl: stringValue(asRecord(athlete.headshot).href),
+      }]
+    })
+  })
+
+  const rawPlays = asArray(payload.plays).map(asRecord)
+  const playLookup = new Map(rawPlays.map((play) => [stringValue(play.id), play]))
+  const plays = rawPlays.flatMap((play, index) => {
+    const text = stringValue(play.text)
+    if (!text) return []
+    return [{
+      id: stringValue(play.id) ?? `${event.id}:play:${index}`,
+      sequence: numberValue(play.sequenceNumber) ?? index,
+      text,
+      awayScore: numberValue(play.awayScore),
+      homeScore: numberValue(play.homeScore),
+      period: numberValue(asRecord(play.period).number),
+      clock: stringValue(asRecord(play.clock).displayValue),
+      isScoringPlay: play.scoringPlay === true,
+    }]
+  }).sort((a, b) => b.sequence - a.sequence)
+  const winProbability = asArray(payload.winprobability).flatMap((rawPoint, sequence) => {
+    const point = asRecord(rawPoint)
+    const homeWinPercentage = numberValue(point.homeWinPercentage)
+    if (homeWinPercentage === undefined) return []
+    const playId = stringValue(point.playId)
+    const play = playLookup.get(playId)
+    return [{
+      playId,
+      homeWinPercentage: Math.max(0, Math.min(1, homeWinPercentage)),
+      tiePercentage: Math.max(0, Math.min(1, numberValue(point.tiePercentage) ?? 0)),
+      period: numberValue(asRecord(play?.period).number),
+      clock: stringValue(asRecord(play?.clock).displayValue),
+      sequence,
+    }]
+  })
+  const playerStatTables = asArray(boxscore.players).flatMap((rawGroup) => {
+    const group = asRecord(rawGroup)
+    const team = asRecord(group.team)
+    return asArray(group.statistics).flatMap((rawCategory) => {
+      const category = asRecord(rawCategory)
+      const rows = asArray(category.athletes).flatMap((rawItem) => {
+        const item = asRecord(rawItem)
+        const athlete = asRecord(item.athlete)
+        const displayName = stringValue(athlete.displayName) ?? stringValue(athlete.fullName) ?? stringValue(athlete.shortName)
+        if (!displayName) return []
+        return [{
+          athleteId: stringValue(athlete.id),
+          displayName,
+          shortName: stringValue(athlete.shortName),
+          headshotUrl: stringValue(asRecord(athlete.headshot).href),
+          jersey: stringValue(athlete.jersey),
+          position: stringValue(asRecord(athlete.position).abbreviation) ?? stringValue(asRecord(athlete.position).displayName),
+          stats: asArray(item.stats).map(stringValue).filter((value): value is string => Boolean(value)),
+        }]
+      })
+      if (!rows.length) return []
+      return [{
+        teamId: stringValue(team.id),
+        teamName: stringValue(team.displayName) ?? stringValue(team.name) ?? 'Team',
+        teamAbbreviation: stringValue(team.abbreviation) ?? 'TEAM',
+        teamLogoUrl: stringValue(team.logo),
+        category: stringValue(category.name),
+        labels: asArray(category.labels).map(stringValue).filter((value): value is string => Boolean(value)),
+        rows,
+      }]
+    })
+  })
+  return { teamStats, playerLeaders, winProbability, playerStatTables, plays }
 }
 
 export function normalizeEspnEvent(rawValue: unknown, descriptor: LeagueDescriptor): SportEvent | null {
@@ -127,10 +250,22 @@ export function normalizeEspnEvent(rawValue: unknown, descriptor: LeagueDescript
 
 async function fetchLeague(descriptor: LeagueDescriptor, signal?: AbortSignal): Promise<SportEvent[]> {
   const now = new Date()
-  const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-  const dates = descriptor.key === 'NFL' || descriptor.key === 'NCAAF' ? '' : `?dates=${formatDateForEspn(now)}-${formatDateForEspn(end)}&limit=1000`
-  const payload = await fetchJson<JsonRecord>(`${ESPN_BASE}/${descriptor.sport}/${descriptor.league}/scoreboard${dates}`, signal)
-  return asArray(payload.events).map((event) => normalizeEspnEvent(event, descriptor)).filter((event): event is SportEvent => Boolean(event))
+  const isGridiron = descriptor.key === 'NFL' || descriptor.key === 'NCAAF'
+  const dateQuery = isGridiron ? '' : `?dates=${formatDateForEspn(now)}&limit=200`
+  
+  let payload = await fetchJson<JsonRecord>(`${ESPN_BASE}/${descriptor.sport}/${descriptor.league}/scoreboard${dateQuery}`, signal)
+  let events = asArray(payload.events).map((event) => normalizeEspnEvent(event, descriptor)).filter((event): event is SportEvent => Boolean(event))
+  
+  if (!events.length && !isGridiron) {
+    const monthQuery = `?dates=${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}&limit=1000`
+    try {
+      payload = await fetchJson<JsonRecord>(`${ESPN_BASE}/${descriptor.sport}/${descriptor.league}/scoreboard${monthQuery}`, signal)
+      events = asArray(payload.events).map((event) => normalizeEspnEvent(event, descriptor)).filter((event): event is SportEvent => Boolean(event))
+    } catch {
+      // fallback failed, return empty
+    }
+  }
+  return events
 }
 
 export async function loadSportsSnapshot(signal?: AbortSignal): Promise<SportsSnapshot> {
@@ -170,10 +305,13 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
       const video = asRecord(value)
       const links = asRecord(video.links)
       const source = asRecord(links.source)
-      const playbackUrl = stringValue(asRecord(source.HD).href)
-        ?? stringValue(asRecord(source.mezzanine).href)
-        ?? stringValue(asRecord(source.SD).href)
-        ?? stringValue(asRecord(links.mobile).href)
+      const hls = asRecord(source.HLS)
+      const mobile = asRecord(links.mobile)
+      const playbackUrl = stringValue(asRecord(hls.HD).href)
+        ?? stringValue(hls.href)
+        ?? stringValue(asRecord(source.HD).href)
+        ?? stringValue(source.href)
+        ?? stringValue(asRecord(mobile.source).href)
       const title = stringValue(video.headline) ?? stringValue(video.title) ?? `Highlight ${index + 1}`
       if (!playbackUrl) return []
       return [{
@@ -181,7 +319,7 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
         title,
         description: stringValue(video.description),
         playbackUrl,
-        thumbnailUrl: stringValue(asRecord(asArray(video.images)[0]).url),
+        thumbnailUrl: stringValue(video.thumbnail) ?? stringValue(asRecord(asArray(video.images)[0]).url),
         duration: numberValue(video.duration),
       }]
     })
@@ -193,8 +331,52 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
       gameStatusDetail: currentDetail,
       liveStats: { ...event.liveStats, ...(currentDetail ? { 'Game Status': currentDetail } : {}) },
       highlightClips,
+      ...summaryDetails(payload, event),
     }
   } catch {
     return event
+  }
+}
+
+export async function loadTeamHub(leagueKey: string, teamId: string, fallback: Team, signal?: AbortSignal): Promise<TeamHubProfile> {
+  const descriptor = LEAGUES.find((item) => item.key.toLowerCase() === leagueKey.toLowerCase())
+  if (!descriptor) return { team: fallback, roster: [], injuries: [] }
+  try {
+    const [teamPayload, rosterPayload] = await Promise.all([
+      fetchJson<JsonRecord>(`${ESPN_BASE}/${descriptor.sport}/${descriptor.league}/teams/${encodeURIComponent(teamId)}`, signal),
+      fetchJson<JsonRecord>(`${ESPN_BASE}/${descriptor.sport}/${descriptor.league}/teams/${encodeURIComponent(teamId)}/roster`, signal).catch((): JsonRecord => ({})),
+    ])
+    const teamRecord = asRecord(teamPayload.team)
+    const team = teamFrom(teamRecord) ?? fallback
+    const athleteRecords = asArray(rosterPayload.athletes).flatMap((group) => {
+      const record = asRecord(group)
+      const items = asArray(record.items)
+      return items.length ? items : [group]
+    }).map(asRecord)
+    const roster: TeamPlayer[] = athleteRecords.map((athlete) => ({
+      id: stringValue(athlete.id) ?? '',
+      name: stringValue(athlete.fullName) ?? stringValue(athlete.displayName) ?? '',
+      position: stringValue(asRecord(athlete.position).abbreviation) ?? stringValue(asRecord(athlete.position).displayName),
+      jersey: stringValue(athlete.jersey),
+      headshotUrl: stringValue(asRecord(athlete.headshot).href),
+    })).filter((player) => player.id && player.name)
+    const injuries: TeamInjury[] = asArray(teamPayload.injuries).flatMap((group) => asArray(asRecord(group).items)).map(asRecord).map((injury) => {
+      const athlete = asRecord(injury.athlete)
+      return {
+        id: stringValue(injury.id) ?? stringValue(athlete.id) ?? '',
+        playerName: stringValue(athlete.displayName) ?? stringValue(athlete.fullName) ?? 'Player',
+        status: stringValue(injury.status) ?? stringValue(injury.type) ?? 'Injury report',
+        detail: stringValue(injury.details) ?? stringValue(injury.description),
+      }
+    }).filter((injury) => injury.id)
+    return {
+      team,
+      record: stringValue(asRecord(asArray(asRecord(teamRecord.record).items)[0]).summary) ?? stringValue(teamRecord.recordSummary),
+      standing: stringValue(teamRecord.standingSummary),
+      roster,
+      injuries,
+    }
+  } catch {
+    return { team: fallback, roster: [], injuries: [] }
   }
 }

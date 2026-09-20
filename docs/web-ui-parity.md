@@ -1,35 +1,43 @@
-# Rally web UI parity
+# Rally webOS parity contract
 
-## Source of truth
+## Sources of truth
 
-The Android TV Compose surface remains the visual source of truth. The web surface adapts its input model for mouse, keyboard, touch, and browser sizing; it does not create a second brand system.
+- Behavior and data semantics: the Android source under `app/src/main/java/com/shiv/rally/`.
+- Visual hierarchy and focus treatment: the 3840×2160 emulator captures in `docs/android-reference/`.
+- Capture metadata and known conflicts: `docs/android-reference/catalog.json`.
+- Platform substitutions: native LG webOS lifecycle, media, pointer, packaging, and store behavior.
 
-## Android TV structure inspected
+When source and an installed Android capture disagree, repository source wins for behavior. The capture remains the appearance reference and the conflict must stay recorded.
 
-`MainActivity` composes `RallyAmbientSurface` around the navigation graph. When the route is not onboarding or playback, `RallyTopBar` stays at the top and contains:
+## Television invariants
 
-- the Rally color wordmark at left;
-- a centered segmented nav: `HOME`, `LIVE`, `LEAGUES`, `HIGHLIGHTS`, `MY TEAMS`;
-- search and settings icon actions at right.
+- Logical stage is always 1920×1080 and scales uniformly as one 16:9 unit.
+- No responsive reflow, mobile navigation, browser page scrolling, or viewport-specific content substitution.
+- Every operation is reachable by D-pad and Magic Remote pointer.
+- Pointer activation focuses the same control used by D-pad navigation.
+- Focus movement is deterministic: explicit targets, ordered rows, ordered columns, and fixed grids. Screen geometry never decides the next target.
+- Focus uses a cyan outline. Primary focused actions retain the Android white-fill treatment.
+- Horizontal shelves page by stable item counts rather than free browser scrolling.
+- Real provider and public sports states are shown honestly; no seeded scores, channels, or playable fallbacks.
 
-`HomeScreen` uses this hierarchy:
+## Route contract
 
-1. full-screen ambient Rally background;
-2. featured matchup hero (`HomeDashboardHero`), with sport artwork, dark scrims, live/featured pill, teams, scores/status, venue/context, and primary/secondary actions;
-3. compact `LIVE / UPCOMING` shelf, with four-item TV pages and 86dp editorial game cards;
-4. compact `BY SPORT` shelf, with 94dp editorial league cards and league marks;
-5. focus-driven card borders/scale and D-pad transitions between hero and shelves.
-
-Android source files reviewed:
-
-- `app/src/main/java/com/shiv/rally/MainActivity.kt`
-- `presentation/common/RallyChrome.kt`
-- `presentation/home/HomeScreen.kt`
-- `presentation/theme/AppleTvTheme.kt`
-- `presentation/theme/Theme.kt`
-- `presentation/theme/RallyLayout.kt`
-- `presentation/league/LeaguesScreen.kt`
-- `presentation/highlights/HighlightsScreen.kt`
+| Route | Required surface | Required states and transitions |
+| --- | --- | --- |
+| Onboarding | Wordmark, promise, three numbered cards, setup action, service disclaimer | Continue opens Sources; Back returns Home |
+| Home | Fixed hero, combined Live/Upcoming shelf, By Sport shelf | Hero action opens Event Center; shelf cards page four at a time; sport cards page five at a time |
+| Live TV | Category rail, channel count, channel search, channel grid | Loading, populated, no channels, provider error; channel opens Player |
+| Event Center | Score hero, broadcast action, saved-team action, matchup stats, leaders, analytics | Summary loading merges official data; Choose Broadcast opens picker; empty picker links to Sources |
+| Leagues | Five-card league directory | Card opens League Center; paging preserves focus |
+| League Center | Header, Games, Standings, Playoffs, date navigation | Tabs retain league context; event cards open Event Center |
+| Highlights | Five-card editorial row | Empty state when no official clips; clip opens Player |
+| My Teams | Following cards and Games for You | Empty state links to team selection; team card opens Team Center |
+| Team Center | Team header, Overview, Games, Roster, Remove | Removal returns My Teams; event cards open Event Center |
+| Search | Global query, TV keyboard, grouped games/teams/leagues/channels/addons | Empty query, searching, grouped results, zero results |
+| Settings | Sources, Sports, Teams, Alerts, Viewing, Support sidebar | Down changes section; Select opens section; configuration persists locally |
+| Player | Video, score bug, HUD, source picker, Game View | Loading, playing, stalled, recovery, error, ended; Back closes overlays before leaving playback |
+| Multi-View | Capability-limited 1–4 slots, active audio slot, source picker, layouts and slot actions | Add, replace, swap, promote, mute, remove, full screen; unsupported slot counts are never offered |
+| Score saver | Moving brand and live/upcoming score grid | Five-minute idle activation; any key or pointer action dismisses |
 
 ## Android tokens
 
@@ -43,45 +51,30 @@ Android source files reviewed:
 | Rally mint | `#B8F3C7` |
 | Rally cyan | `#6FCFF6` |
 | Live red | `#FF453A` |
-| Ambient | `rally_ambient_background_v5.png` with navy vertical/horizontal scrims |
-| Hero radius | 12dp |
-| Card radius | 10dp |
-| Control radius | 8dp |
-| TV safe horizontal padding | 46dp |
-| Home content padding | 22dp horizontal, 4dp top, 7dp bottom |
-| Home hero | 202dp high |
-| Live shelf | 112dp high; cards 86dp high; 13dp spacing |
-| Sport shelf | 119dp high; cards 94dp high; 13dp spacing |
-| Focus | cyan 2dp border, 1.025 card scale / 1.02 button scale, 150ms easing |
+| Ambient | `rally_ambient_background_v5.png` with navy scrims |
+| Hero radius | 12 logical pixels |
+| Card radius | 10 logical pixels |
+| Control radius | 8 logical pixels |
+| Safe horizontal padding | 46 logical pixels |
+| Focus | cyan 2px border, 1.025 card scale, 150ms easing |
 | Display font | Sora variable |
 | Body font | Inter variable |
 
-## Assets reused by web
+## Platform substitutions
 
-Copied from the existing Android resources and Rally_Brand_Kit into `web/public/rally-assets/`:
+- Android Media3 becomes native webOS video playback where supported, with HLS.js only when Media Source support is present and native HLS is unavailable.
+- Android lifecycle callbacks become `visibilitychange`, `pageshow`, and webOS application lifecycle handling.
+- Android TV remote input becomes LG key codes plus standard keyboard events.
+- Android touch behavior becomes Magic Remote pointer focus and activation.
+- Android self-update UI does not transfer to the Content Store build. Support exposes installed release information; LG manages store updates.
+- Provider network requests use direct access first and the packaged Luna service only when webOS browser restrictions require it.
 
-- approved gradient mark and wordmark SVGs from `Rally_Brand_Kit/08_Vector_SVG`;
-- `rally_ambient_background_v5.png`;
-- `hero_editorial_{football,basketball,soccer,hockey,baseball}_v4.png`;
-- `card_editorial_{football,basketball,soccer,hockey,baseball}_tv.jpg`;
-- Android league marks (`league_mark_{nfl,nba,mlb,nhl,epl,ucl,laliga,seriea,mls}.png`);
-- Android `sora_variable.ttf` and `inter_variable.ttf`.
+## Acceptance evidence
 
-The prior hand-authored web mark was replaced by the approved Rally mark SVG. No replacement logo or unrelated imagery is used.
+A route is complete only when:
 
-## Laptop adaptation decisions
-
-- Keep the Android top bar hierarchy; use horizontal pointer/keyboard navigation instead of D-pad focus routing.
-- Keep the full-screen ambient surface, editorial hero, live/upcoming shelf, and by-sport shelf. Web cards can scroll horizontally rather than page four items at a time.
-- Preserve the Android focus language for `:focus-visible`, hover, and active navigation: cyan/luminous border, subtle lift, dark glass surface.
-- Keep search and settings as compact top-bar actions; keep the existing browser source/settings flows because they are web-only provider affordances.
-- Preserve existing hash routes and add only the Android-aligned league/highlights destinations where the web data model can represent a real state. Highlights uses the same honest empty state when ESPN supplies no clips.
-- Keep the web source/player boundary unchanged: direct browser playback, CORS checks, and provider diagnostics remain browser-specific.
-
-## Verification evidence
-
-- Baseline web screenshot: `docs/web-ui-before.png`.
-- Final desktop screenshot: `docs/web-ui-after.png`.
-- Final mobile screenshot: `docs/web-ui-after-mobile.png`.
-- Comparison result: the web now uses the Android top-bar hierarchy, approved Rally wordmark/mark, ambient backdrop, sport hero artwork, 202dp-scale editorial hero treatment, compact `LIVE / UPCOMING` shelf, and `BY SPORT` shelf. Desktop horizontal scrolling replaces TV four-item paging; mobile uses a bottom nav and touch-sized controls.
-- Android runtime screenshot was attempted but is blocked on this workstation: `adb devices` returned no connected emulator or physical device, and the SDK has no emulator binary/AVD. Android source and resource inspection are the available reference evidence until a device is supplied.
+1. its 1920×1080 capture matches the corresponding Android composition;
+2. its D-pad trace reaches every action without geometry-based focus selection;
+3. pointer activation produces the same state transition;
+4. loading, empty, populated, and error states are exercised where applicable;
+5. Back and lifecycle resume preserve a valid route and focus target.

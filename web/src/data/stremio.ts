@@ -1,5 +1,6 @@
 import { asArray, asRecord, isRecord, normalizeMatchText, parseStremioStream, stremioToCandidate, textMatchesEvent } from '../domain'
 import type { ProviderIssue, SourceCandidate, SportEvent, StremioManifest, StremioMeta, StremioStreamOption } from '../domain'
+import { providerFetchJson } from './network'
 
 interface StremioResponse {
   streams?: unknown[]
@@ -13,9 +14,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const forwardAbort = () => controller.abort()
   signal?.addEventListener('abort', forwardAbort, { once: true })
   try {
-    const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } })
-    if (!response.ok) throw new Error(`Addon returned HTTP ${response.status}`)
-    return await response.json() as T
+    return await providerFetchJson<T>(url, { headers: { Accept: 'application/json' } }, controller.signal)
   } finally {
     window.clearTimeout(timeout)
     signal?.removeEventListener('abort', forwardAbort)
@@ -120,4 +119,47 @@ export async function discoverStremioSources(addonUrls: string[], event: SportEv
   const issues = results.flatMap((result) => result.issues)
   const candidates = streams.map((stream) => stremioToCandidate(stream, event))
   return { candidates, streams, issues }
+}
+
+export async function searchStremioStreams(addonUrls: string[], query: string, signal?: AbortSignal): Promise<{ streams: StremioStreamOption[]; issues: ProviderIssue[] }> {
+  const normalized = query.trim()
+  if (normalized.length < 3) return { streams: [], issues: [] }
+  const results = await Promise.all(addonUrls.map(async (addonUrl) => {
+    const manifest = manifestUrl(addonUrl)
+    try {
+      const descriptor = await fetchJson<StremioManifest>(manifest, signal)
+      const base = baseUrl(manifest)
+      const addonName = descriptor.name || 'Stremio addon'
+      const metas: StremioMeta[] = []
+      for (const catalog of (descriptor.catalogs ?? []).slice(0, 6)) {
+        if (!catalog.id) continue
+        try {
+          const response = await fetchJson<StremioResponse>(`${base}catalog/${catalog.type || 'sport'}/${catalog.id}/search=${encodeURIComponent(normalized)}.json`, signal)
+          metas.push(...asArray(response.metas).map(metaFrom).filter((meta): meta is StremioMeta => Boolean(meta)))
+        } catch {
+          // Continue through the addon's other catalogs.
+        }
+      }
+      const streams: StremioStreamOption[] = []
+      for (const meta of Array.from(new Map(metas.map((item) => [item.id, item])).values()).slice(0, 10)) {
+        try {
+          const response = await fetchJson<StremioResponse>(`${base}stream/${meta.type || 'sport'}/${encodeURIComponent(meta.id)}.json`, signal)
+          for (const raw of asArray(response.streams)) {
+            if (!isRecord(raw)) continue
+            const parsed = parseStremioStream(raw, addonName)
+            if (parsed) streams.push(parsed)
+          }
+        } catch {
+          // Keep successful stream results.
+        }
+      }
+      return { streams, issues: [] as ProviderIssue[] }
+    } catch (error) {
+      return { streams: [], issues: [{ provider: redactProviderUrl(addonUrl), message: 'Addon search unavailable', detail: error instanceof Error ? error.message : undefined }] }
+    }
+  }))
+  return {
+    streams: Array.from(new Map(results.flatMap((result) => result.streams).map((stream) => [stream.streamUrl, stream])).values()).slice(0, 20),
+    issues: results.flatMap((result) => result.issues),
+  }
 }

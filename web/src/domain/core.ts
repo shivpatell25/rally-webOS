@@ -94,7 +94,13 @@ export function validateProviderConfig(input: ProviderConfig): ProviderValidatio
   }
 
   return {
-    config: { portalUrl, macAddress: normalizedMac, addonUrls },
+    config: {
+      portalUrl,
+      macAddress: normalizedMac,
+      ...(input.serialNumber?.trim() ? { serialNumber: input.serialNumber.trim() } : {}),
+      ...(input.deviceId?.trim() ? { deviceId: input.deviceId.trim() } : {}),
+      addonUrls,
+    },
     errors,
     warnings,
   }
@@ -204,6 +210,15 @@ export function rankStreamCandidates(candidates: SourceCandidate[]): SourceCandi
     if (aPlayable !== bPlayable) return aPlayable ? -1 : 1
     return (b.qualityRank + b.matchConfidence * 100) - (a.qualityRank + a.matchConfidence * 100)
   })
+}
+
+export function selectRecoveryCandidate(candidates: SourceCandidate[], currentId: string, failedIds: ReadonlySet<string> = new Set()): SourceCandidate | undefined {
+  return rankStreamCandidates(candidates).find((candidate) =>
+    candidate.id !== currentId
+    && !failedIds.has(candidate.id)
+    && candidate.exactGameMatch
+    && candidate.browserStatus !== 'blocked'
+    && candidate.browserStatus !== 'unsupported')
 }
 
 export function parseStremioStream(raw: StremioRawStream, addonName: string): StremioStreamOption | null {

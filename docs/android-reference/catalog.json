@@ -1,0 +1,55 @@
+{
+  "baselinePolicy": {
+    "behavior": "Current Android source in this repository",
+    "appearance": "Installed Android TV reference build captured in this directory",
+    "conflictRule": "When the installed build and repository differ, preserve repository behavior and use the captures only for visual and interaction treatment. Record the conflict instead of silently copying it."
+  },
+  "captureEnvironment": {
+    "avd": "Television_4K",
+    "package": "com.shiv.spatelorts",
+    "activity": "com.shiv.rally.MainActivity",
+    "appVersion": "1.0-beta6",
+    "build": 6,
+    "resolution": "3840x2160",
+    "capturedWith": "Android Debug Bridge screencap"
+  },
+  "knownDifferences": [
+    "The installed reference build exposes both Stalker / Ministra and Xtream Codes providers; the current repository source does not contain the Xtream provider model.",
+    "No IPTV portal was configured in the emulator. Live channel playback, the player HUD, Game View, and Multi-View could not be reached from real streams.",
+    "The configured sports-data fixture changes with time, so scores and event identities are reference content rather than pixel-stable acceptance data."
+  ],
+  "focusBehavior": [
+    "Focused controls use a bright cyan outline; primary focused actions also use a white fill with dark text.",
+    "The selected top-level route uses a restrained dark outlined pill and is visually distinct from the brighter focus ring.",
+    "From the focused Home navigation item, D-pad Down moved directly to the first Live Now card in the observed state.",
+    "Settings uses an explicit vertical focus graph: D-pad Down moves one section and Select opens it while retaining the cyan section outline.",
+    "The entire 16:9 composition remains fixed; shelves page or clip horizontally rather than reflowing into a browser layout."
+  ],
+  "screens": [
+    {"file": "rally-onboarding.png", "route": "Onboarding", "state": "Continue to setup focused"},
+    {"file": "rally-home.png", "route": "Home", "state": "Top navigation focused"},
+    {"file": "rally-home-focus.png", "route": "Home", "state": "First Live Now card focused"},
+    {"file": "rally-event.png", "route": "Event Center", "state": "Final event with matchup stats, top performers, and analytics"},
+    {"file": "rally-leagues.png", "route": "Leagues", "state": "Five league centers"},
+    {"file": "rally-league-center.png", "route": "League Center", "state": "Games tab with date navigation"},
+    {"file": "rally-standings.png", "route": "League Center", "state": "Standings tab"},
+    {"file": "rally-highlights.png", "route": "Highlights", "state": "Five-card highlight shelf"},
+    {"file": "rally-my-teams.png", "route": "My Teams", "state": "Empty state"},
+    {"file": "rally-my-teams-filled.png", "route": "My Teams", "state": "Following and Games for You sections"},
+    {"file": "rally-team-center.png", "route": "Team Center", "state": "Overview tab with recent form and next game"},
+    {"file": "rally-live.png", "route": "Live TV", "state": "No configured channels"},
+    {"file": "rally-broadcast-picker.png", "route": "Broadcast Picker", "state": "No source available"},
+    {"file": "rally-current.png", "route": "Settings / Sources", "state": "Provider and device identity fields"},
+    {"file": "rally-settings-sports.png", "route": "Settings / Sports", "state": "League enablement, favorites, and ordering"},
+    {"file": "rally-settings-teams.png", "route": "Settings / Teams", "state": "Favorite team management"},
+    {"file": "rally-settings-alerts.png", "route": "Settings / Alerts", "state": "Favorite team and RedZone alerts"},
+    {"file": "rally-settings-viewing.png", "route": "Settings / Viewing", "state": "Playback and accessibility settings"},
+    {"file": "rally-settings-support.png", "route": "Settings / Support", "state": "Release, update, and diagnostic surfaces"},
+    {"file": "rally-search.png", "route": "Global Search", "state": "Search field focused with Android TV keyboard"}
+  ],
+  "unavailableCaptures": [
+    {"surface": "Player HUD and Game View", "reason": "No configured playable portal or broadcast source"},
+    {"surface": "Multi-View picker, layouts, and per-slot controls", "reason": "No configured live channels"},
+    {"surface": "Score saver", "reason": "Idle-only state was not exercised during route capture"}
+  ]
+}

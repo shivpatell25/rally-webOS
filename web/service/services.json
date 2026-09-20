@@ -1,0 +1,10 @@
+{
+  "id": "com.shiv.rally.service",
+  "description": "Rally provider network bridge",
+  "services": [
+    {
+      "name": "com.shiv.rally.service",
+      "description": "Rally provider network bridge"
+    }
+  ]
+}

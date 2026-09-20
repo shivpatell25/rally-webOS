@@ -136,10 +136,10 @@ Rally does not proxy streams, bypass DRM, or redistribute content. Provider toke
 
 - Presentation: React TV surfaces aligned with the Android navigation and layout hierarchy
 - Domain: deterministic TypeScript validation, matching, quality ranking, favorites, and diagnostics
-- Data: ESPN normalization plus direct Stalker/Ministra and Stremio adapters
-- Platform: LG remote spatial navigation, Back/media keys, resume handling, and initial focus
-- Playback: native LG HLS where available; lazy-loaded `hls.js` fallback through Media Source Extensions
-- Packaging: `public/appinfo.json` and `@webos-tools/cli`
+- Data: ESPN normalization plus direct-browser Stalker/Ministra and Stremio adapters with a packaged webOS metadata fallback service
+- Platform: deterministic LG remote focus zones, Back/media keys, resume handling, and capability detection
+- Playback: shared native-media/`hls.js` engine with bounded recovery, source switching, diagnostics, Game View, and capability-scaled Multi-View
+- Packaging: `public/appinfo.json`, `service/`, and `@webos-tools/cli`
 
 ## Repository layout
 

@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "package:webos": "npm run build && ares-package dist -o ."
+    "package:webos": "npm run package:webos:developer",
+    "package:webos:developer": "npm run build && node scripts/package-webos.mjs developer",
+    "package:webos:store": "npm run build && node scripts/package-webos.mjs store"
   },
   "dependencies": {
     "hls.js": "^1.5.17",

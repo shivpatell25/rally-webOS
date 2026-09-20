@@ -6,6 +6,7 @@ interface EventCardProps {
   event: SportEvent
   onOpen: () => void
   compact?: boolean
+  variant?: 'league' | 'my-teams'
   favoriteTeamIds?: string[]
   onToggleFavorite?: (teamId: string) => void
 }
@@ -15,7 +16,7 @@ function TeamMark({ logoUrl, abbreviation }: { logoUrl?: string; abbreviation: s
   return <span className="team-mark team-mark-fallback" aria-hidden="true">{abbreviation.slice(0, 3)}</span>
 }
 
-export const EventCard = memo(function EventCard({ event, onOpen, compact = false, favoriteTeamIds = [], onToggleFavorite }: EventCardProps) {
+export const EventCard = memo(function EventCard({ event, onOpen, compact = false, variant = 'league', favoriteTeamIds = [], onToggleFavorite }: EventCardProps) {
   const isLive = event.status === 'LIVE' || event.status === 'HALFTIME'
   const [visible, setVisible] = useState(false)
   const ref = useRef<HTMLElement>(null)
@@ -46,22 +47,31 @@ export const EventCard = memo(function EventCard({ event, onOpen, compact = fals
           </>
         )}
         {visible && !compact && (
-          <div className="event-card-vertical">
+          <div className={`event-card-vertical ${variant === 'my-teams' ? 'event-card-vertical-myteams' : ''}`}>
             <div className="event-card-vertical-top">
               <span className="event-league">{event.league}</span>
               <span className="event-date">{eventStatusLabel(event)}</span>
             </div>
             <div className="event-card-vertical-bottom">
-              <div className="vertical-matchup-logos">
-                <TeamMark abbreviation={event.awayTeam?.abbreviation ?? 'AWY'} logoUrl={event.awayTeam?.logoUrl} />
-                <span>{event.scoreAway && event.scoreHome ? `${event.scoreAway} - ${event.scoreHome}` : 'AT'}</span>
-                <TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} />
-              </div>
-              <div className="vertical-matchup-names">
-                <strong>{event.awayTeam?.name ?? 'Away'}</strong>
-                <small>at {event.homeTeam?.name ?? 'Home'}</small>
-                <span className="event-venue">{event.venue || 'Venue TBD'}</span>
-              </div>
+              {variant === 'my-teams' ? (
+                <div className="vertical-myteams-content">
+                  <strong>{event.awayTeam?.name ?? 'Away'} <small>at</small> {event.homeTeam?.name ?? 'Home'}</strong>
+                  <span className="event-league-name">{event.league}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="vertical-matchup-logos">
+                    <TeamMark abbreviation={event.awayTeam?.abbreviation ?? 'AWY'} logoUrl={event.awayTeam?.logoUrl} />
+                    <span>{event.scoreAway && event.scoreHome ? `${event.scoreAway} - ${event.scoreHome}` : 'AT'}</span>
+                    <TeamMark abbreviation={event.homeTeam?.abbreviation ?? 'HME'} logoUrl={event.homeTeam?.logoUrl} />
+                  </div>
+                  <div className="vertical-matchup-names">
+                    <strong>{event.awayTeam?.name ?? 'Away'}</strong>
+                    <small>at {event.homeTeam?.name ?? 'Home'}</small>
+                    <span className="event-venue">{event.venue || 'Venue TBD'}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

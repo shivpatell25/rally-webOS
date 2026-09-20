@@ -299,7 +299,10 @@ h2 { letter-spacing: -.025em; }
 .vertical-matchup-names { display: flex; flex-direction: column; gap: 4px; }
 .vertical-matchup-names strong { color: var(--off-white); font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .vertical-matchup-names small { color: var(--off-white); font-size: 14px; font-weight: 600; opacity: 0.9; text-transform: uppercase; }
-.vertical-matchup-names .event-venue { margin-top: 4px; color: var(--text-secondary); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.vertical-myteams-content { display: flex; flex-direction: column; gap: 8px; }
+.vertical-myteams-content strong { color: var(--off-white); font-size: 18px; font-weight: 700; letter-spacing: .01em; }
+.vertical-myteams-content strong small { color: var(--text-secondary); font-weight: 500; margin: 0 6px; }
+.vertical-myteams-content .event-league-name { color: var(--cyan); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .matchup { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; margin: 20px 0 16px; }
 .matchup-team { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--off-white); font-size: 10px; font-weight: 700; }
 .matchup-team-home { justify-content: flex-end; text-align: right; }

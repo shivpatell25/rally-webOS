@@ -8,7 +8,7 @@ interface EventCardProps {
   compact?: boolean
   variant?: 'league' | 'my-teams'
   favoriteTeamIds?: string[]
-  onToggleFavorite?: (teamId: string) => void
+  onToggleFavorite?: (teamId: string, league?: string) => void
 }
 
 function timeLabel(event: SportEvent): string {
@@ -90,10 +90,10 @@ export const EventCard = memo(function EventCard({ event, onOpen, compact = fals
           </div>
         )}
       </button>
-      {visible && onToggleFavorite && event.homeTeam && event.awayTeam && (
+      {visible && !compact && onToggleFavorite && event.homeTeam && event.awayTeam && (
         <div className="event-card-favorites" aria-label="Favorite teams">
           {[event.awayTeam, event.homeTeam].map((team) => (
-            <button key={team.id} className={`icon-button ${favoriteTeamIds.includes(team.id) ? 'is-selected' : ''}`} onClick={() => onToggleFavorite(team.id)} aria-label={`${favoriteTeamIds.includes(team.id) ? 'Remove' : 'Add'} ${team.name} ${favoriteTeamIds.includes(team.id) ? 'from' : 'to'} favorites`}><Icon name="star" size={15} /></button>
+            <button key={team.id} className={`icon-button ${favoriteTeamIds.includes(team.id) ? 'is-selected' : ''}`} onClick={() => onToggleFavorite(team.id, event.league)} aria-label={`${favoriteTeamIds.includes(team.id) ? 'Remove' : 'Add'} ${team.name} ${favoriteTeamIds.includes(team.id) ? 'from' : 'to'} favorites`}><Icon name="star" size={15} /></button>
           ))}
         </div>
       )}

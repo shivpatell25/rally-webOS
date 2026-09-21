@@ -293,3 +293,30 @@ export function sportBackdrop(sport: string): string {
   if (value.includes('hock')) return 'backdrop-hockey'
   return 'backdrop-football'
 }
+export interface BroadcastQuality {
+  badgeText: string
+  network?: string
+}
+
+/** Port of Android resolveMaxBroadcastQuality (official broadcaster evidence only). */
+export function resolveBroadcastQuality(event: SportEvent): BroadcastQuality {
+  const rawStations = [...event.broadcastStations, event.liveStats['TV Broadcast'] ?? '']
+    .flatMap((entry) => entry.split(/[,/&+]/).map((part) => part.trim()).filter(Boolean))
+    .filter((station, index, all) => all.indexOf(station) === index)
+  const network = rawStations[0]
+  const evidence = [...rawStations, event.liveStats['TV Broadcast'] ?? '', event.liveStats['Broadcast Quality'] ?? '', event.liveStats['Video Format'] ?? '', event.eventContextTitle ?? ''].join(' ').toUpperCase()
+  const has4k = /\b(4K|UHD|2160P?)\b/.test(evidence)
+  const hasHdr = /\b(HDR10\+?|HDR|HLG|DOLBY\s+VISION)\b/.test(evidence)
+  const has1080 = /\b(1080P?|FHD)\b/.test(evidence)
+  // ESPN/ESPN2 officially produce NFL, NBA and NHL telecasts in 4K HDR.
+  const espn4k = rawStations.some((station) => station.toUpperCase() === 'ESPN' || station.toUpperCase() === 'ESPN2')
+    && ['NFL', 'NBA', 'NHL'].some((league) => event.league.toUpperCase().includes(league))
+  const identity = `${event.name} ${event.eventContextTitle ?? ''}`.toUpperCase()
+  const nbcEvent = rawStations.some((station) => station.toUpperCase() === 'NBC' || station.toUpperCase() === 'PEACOCK')
+    && (identity.includes('SUPER BOWL LX') || identity.includes('MILAN CORTINA') || identity.includes('WINTER OLYMPIC'))
+  const is4k = has4k || espn4k || nbcEvent
+  const isHdr = hasHdr || espn4k || nbcEvent
+  const is1080p = !is4k && has1080
+  const badgeText = is4k && isHdr ? '4K HDR' : is4k ? '4K UHD' : is1080p && isHdr ? '1080p HDR' : is1080p ? '1080p' : 'HD'
+  return { badgeText, network }
+}

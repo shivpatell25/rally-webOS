@@ -228,6 +228,12 @@ export function normalizeEspnEvent(rawValue: unknown, descriptor: LeagueDescript
   const liveStats: Record<string, string> = {}
   if (broadcasts.length) liveStats['TV Broadcast'] = broadcasts.join(', ')
   if (statusDetail) liveStats['Game Status'] = statusDetail
+  const recordSummary = (competitor?: JsonRecord): string | undefined =>
+    stringValue(asRecord(asArray(competitor?.records)[0]).summary)
+  const homeRecord = recordSummary(home)
+  const awayRecord = recordSummary(away)
+  if (homeRecord) liveStats[`${homeTeam.abbreviation} Record`] = homeRecord
+  if (awayRecord) liveStats[`${awayTeam.abbreviation} Record`] = awayRecord
 
   return {
     id,
@@ -323,6 +329,28 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
         duration: numberValue(video.duration),
       }]
     })
+    const details = summaryDetails(payload, event)
+    const pick = asRecord(asArray(payload.pickcenter)[0])
+    const spread = numberValue(pick.spread)
+    const overUnder = numberValue(pick.overUnder)
+    const awayMoneyLine = numberValue(asRecord(pick.awayTeamOdds).moneyLine)
+    const homeMoneyLine = numberValue(asRecord(pick.homeTeamOdds).moneyLine)
+    const baseStats = details.teamStats ?? []
+    const analytics: Array<{ label: string; awayValue: string; homeValue: string }> = []
+    const addAnalytics = (label: string, awayValue: string, homeValue: string) => {
+      if (!baseStats.some((stat) => stat.label.toLowerCase() === label.toLowerCase())) {
+        analytics.push({ label, awayValue, homeValue })
+      }
+    }
+    if (spread !== undefined) {
+      addAnalytics('Spread', spread > 0 ? `-${spread}` : `+${-spread}`, spread > 0 ? `+${spread}` : `${spread}`)
+    }
+    if (overUnder !== undefined) {
+      addAnalytics('Over/Under', `O ${overUnder}`, `U ${overUnder}`)
+    }
+    if (awayMoneyLine !== undefined && homeMoneyLine !== undefined) {
+      addAnalytics('Moneyline', awayMoneyLine > 0 ? `+${awayMoneyLine}` : `${awayMoneyLine}`, homeMoneyLine > 0 ? `+${homeMoneyLine}` : `${homeMoneyLine}`)
+    }
     return {
       ...event,
       scoreHome: numberValue(home?.score) ?? event.scoreHome,
@@ -331,7 +359,8 @@ export async function loadEventSummary(event: SportEvent, signal?: AbortSignal):
       gameStatusDetail: currentDetail,
       liveStats: { ...event.liveStats, ...(currentDetail ? { 'Game Status': currentDetail } : {}) },
       highlightClips,
-      ...summaryDetails(payload, event),
+      ...details,
+      teamStats: [...baseStats, ...analytics],
     }
   } catch {
     return event

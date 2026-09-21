@@ -231,10 +231,13 @@ export default function App() {
     : []
   const immersivePlayback = route.page === 'player' || route.page === 'multiview'
   const hideChrome = immersivePlayback || route.page === 'onboarding'
+  const ambientKey = route.page === 'league' || route.page === 'team' ? route.league : selectedEvent?.league ?? ''
+  const ambientTint = /nfl/i.test(ambientKey) ? '#215A86' : /nba/i.test(ambientKey) ? '#7E3B2D' : /nhl/i.test(ambientKey) ? '#316779' : /mlb/i.test(ambientKey) ? '#344E86' : /soccer|epl|mls|liga|champions|serie/i.test(ambientKey) ? '#246B58' : '#1C5267'
 
   return (
     <TvStage>
       <div className={`app-shell ${immersivePlayback ? 'is-playback' : ''}`}>
+        <div className="ambient-tint" aria-hidden="true" style={{ ['--ambient-tint' as string]: ambientTint }} />
         <div className="app-main">
           {!hideChrome && <Topbar route={route} />}
           <main className="page-content">

@@ -81,24 +81,38 @@ img { max-width: 100%; display: block; }
 .app-shell::before {
   position: fixed;
   inset: 0;
-  z-index: -2;
+  z-index: 0;
   content: '';
   background: url('/rally-assets/ambient.png') center top / cover no-repeat;
-  opacity: .82;
 }
 
 .app-shell::after {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   content: '';
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(5, 8, 15, .1) 0%, rgba(5, 8, 15, .48) 45%, rgba(5, 8, 15, .98) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, .09) 0%, rgba(5, 8, 15, .14) 52%, rgba(5, 8, 15, .66) 100%);
 }
+
+.ambient-tint {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(640px at 7% 0%, rgba(234, 251, 120, .06), transparent 70%),
+    linear-gradient(90deg, rgba(28, 82, 103, .075), transparent 60%);
+  background:
+    radial-gradient(640px at 7% 0%, rgba(234, 251, 120, .06), transparent 70%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ambient-tint, #1C5267) 7.5%, transparent), transparent 60%);
+  transition: background .52s ease;
+}
+.reduce-motion .ambient-tint { transition: none; }
 
 .sidebar { display: none; }
 
-.app-main { width: 100%; }
+.app-main { position: relative; z-index: 3; width: 100%; }
 
 .topbar {
   position: relative;
